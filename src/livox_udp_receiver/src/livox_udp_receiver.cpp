@@ -3,6 +3,7 @@
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_ros/transform_broadcaster.h"
+#include "sensor_msgs/msg/laser_scan.hpp"
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -15,6 +16,7 @@ class LivoxReceiver : public rclcpp::Node {
 public:
     LivoxReceiver() : Node("livox_udp_receiver") {
         publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("livox_points", 10);
+        laserscan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
         socket_ = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -56,9 +58,11 @@ private:
         }
     
         size_t num_points = points.size() / 3;
+        rclcpp::Time timestamp = now();
+
         sensor_msgs::msg::PointCloud2 cloud_msg;
-        cloud_msg.header.stamp = now();
-        cloud_msg.header.frame_id = "livox_frame";
+        cloud_msg.header.stamp = timestamp;
+        cloud_msg.header.frame_id = "base_link";
         cloud_msg.height = 1;
         cloud_msg.width = num_points;
         cloud_msg.is_dense = true;
@@ -79,6 +83,46 @@ private:
         memcpy(cloud_msg.data.data(), points.data(), cloud_msg.data.size());
     
         publisher_->publish(cloud_msg);
+
+        // === Create LaserScan ===
+        sensor_msgs::msg::LaserScan scan_msg;
+        scan_msg.header.stamp = timestamp;
+        scan_msg.header.frame_id = "base_link";
+
+        float angle_min = -M_PI;
+        float angle_max = M_PI;
+        float angle_increment = M_PI / 180.0; // 1 degree
+        int num_beams = std::round((angle_max - angle_min) / angle_increment);
+
+        scan_msg.angle_min = angle_min;
+        scan_msg.angle_max = angle_max;
+        scan_msg.angle_increment = angle_increment;
+        scan_msg.time_increment = 0.0;
+        scan_msg.scan_time = 0.1; // assuming 10Hz
+        scan_msg.range_min = 0.1;
+        scan_msg.range_max = 20.0;
+
+        scan_msg.ranges.assign(num_beams, std::numeric_limits<float>::infinity());
+
+        for (size_t i = 0; i < num_points; ++i) {
+            float x = points[3 * i];
+            float y = points[3 * i + 1];
+            float z = points[3 * i + 2];
+
+            if (std::abs(z) > 0.1f) continue;  // Keep near-ground points
+
+            float angle = std::atan2(y, x);
+            float range = std::sqrt(x * x + y * y);
+
+            int index = static_cast<int>((angle - angle_min) / angle_increment);
+            if (index >= 0 && index < num_beams) {
+                // Use closest point for each beam
+                if (range < scan_msg.ranges[index])
+                    scan_msg.ranges[index] = range;
+            }
+        }
+
+        laserscan_publisher_->publish(scan_msg);
     }
     void receive_loop() {
         std::vector<uint8_t> buffer(65536);  // Large enough for max UDP payload
@@ -109,7 +153,7 @@ private:
                 geometry_msgs::msg::TransformStamped tf_msg;
                 tf_msg.header.stamp = now();
                 tf_msg.header.frame_id = "odom";           // or "map", depending on your setup
-                tf_msg.child_frame_id = "livox_frame";
+                tf_msg.child_frame_id = "base_link";
     
                 tf_msg.transform.translation.x = data[0];
                 tf_msg.transform.translation.y = data[1];
@@ -126,6 +170,7 @@ private:
     }
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laserscan_publisher_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     rclcpp::TimerBase::SharedPtr timer_;
     std::vector<float> point_buffer_;
