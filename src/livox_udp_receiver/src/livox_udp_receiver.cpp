@@ -29,11 +29,10 @@ public:
             return;
         }
 
-        last_pub_time_ = now();
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(66),
-            std::bind(&LivoxReceiver::publish_aggregated_cloud, this)
-        );
+        // timer_ = this->create_wall_timer(
+        //     std::chrono::milliseconds(33),
+        //     std::bind(&LivoxReceiver::publish_aggregated_cloud, this)
+        // );
 
         thread_ = std::thread([this]() { this->receive_loop(); });
     }
@@ -53,7 +52,10 @@ private:
         std::vector<float> points;
         {
             std::lock_guard<std::mutex> lock(buffer_mutex_);
-            if (point_buffer_.empty()) return;
+            if (point_buffer_.empty()) {
+                printf("No new data to process\n");
+                return;  // No new data to process
+            }
             points.swap(point_buffer_);  // Move data out of buffer
         }
     
@@ -132,22 +134,90 @@ private:
                 printf("Error receiving data\n");
                 continue;
             }
-    
+
             uint8_t msg_type = buffer[0];
     
             if (msg_type == MSG_POINTCLOUD) {
+                // printf("Received MSG_POINTCLOUD at time: %f\n", now().seconds());
                 const float* float_data = reinterpret_cast<const float*>(buffer.data() + 1);
                 size_t num_floats = (recv_len - 1) / sizeof(float);
                 if (num_floats % 3 != 0) return;
 
-                std::lock_guard<std::mutex> lock(buffer_mutex_);
-                point_buffer_.insert(point_buffer_.end(), float_data, float_data + num_floats);
+                // std::lock_guard<std::mutex> lock(buffer_mutex_);
+                // point_buffer_.insert(point_buffer_.end(), float_data, float_data + num_floats);
+                size_t num_points = num_floats / 3;
+                rclcpp::Time timestamp = now();
+
+                // === Publish PointCloud2 ===
+                sensor_msgs::msg::PointCloud2 cloud_msg;
+                cloud_msg.header.stamp = timestamp;
+                cloud_msg.header.frame_id = "base_link";
+                cloud_msg.height = 1;
+                cloud_msg.width = num_points;
+                cloud_msg.is_dense = true;
+                cloud_msg.is_bigendian = false;
+                cloud_msg.point_step = 12;
+                cloud_msg.row_step = cloud_msg.point_step * num_points;
+
+                cloud_msg.fields.clear();
+                sensor_msgs::msg::PointField field;
+                field.datatype = sensor_msgs::msg::PointField::FLOAT32;
+                field.count = 1;
+
+                field.name = "x"; field.offset = 0; cloud_msg.fields.push_back(field);
+                field.name = "y"; field.offset = 4; cloud_msg.fields.push_back(field);
+                field.name = "z"; field.offset = 8; cloud_msg.fields.push_back(field);
+
+                cloud_msg.data.resize(num_floats * sizeof(float));
+                memcpy(cloud_msg.data.data(), float_data, cloud_msg.data.size());
+
+                publisher_->publish(cloud_msg);
+
+                // === Generate LaserScan ===
+                sensor_msgs::msg::LaserScan scan_msg;
+                scan_msg.header.stamp = timestamp;
+                scan_msg.header.frame_id = "base_link";
+
+                float angle_min = -M_PI;
+                float angle_max = M_PI;
+                float angle_increment = M_PI / 180.0f; // 1 degree resolution
+                int num_beams = static_cast<int>((angle_max - angle_min) / angle_increment);
+
+                scan_msg.angle_min = angle_min;
+                scan_msg.angle_max = angle_max;
+                scan_msg.angle_increment = angle_increment;
+                scan_msg.time_increment = 0.0f;
+                scan_msg.scan_time = 0.033f;  // 30Hz
+                scan_msg.range_min = 0.1f;
+                scan_msg.range_max = 20.0f;
+                scan_msg.ranges.assign(num_beams, std::numeric_limits<float>::infinity());
+
+                for (size_t i = 0; i < num_points; ++i) {
+                    float x = float_data[3 * i];
+                    float y = float_data[3 * i + 1];
+                    float z = float_data[3 * i + 2];
+
+                    if (std::abs(z) > 0.1f) continue;
+
+                    float angle = std::atan2(y, x);
+                    float range = std::hypot(x, y);
+
+                    int index = static_cast<int>((angle - angle_min) / angle_increment);
+                    if (index >= 0 && index < num_beams) {
+                        if (range < scan_msg.ranges[index]) {
+                            scan_msg.ranges[index] = range;
+                        }
+                    }
+                }
+
+                laserscan_publisher_->publish(scan_msg);
             }
             else if (msg_type == MSG_HIGHSTATE) {
                 if (recv_len < 1 + (int)sizeof(float) * 7) {
                     printf("Received MSG_HIGHSTATE but size is too small\n");
                     continue;
                 }
+                
                 const float* data = reinterpret_cast<float*>(buffer.data() + 1);
     
                 geometry_msgs::msg::TransformStamped tf_msg;
@@ -175,7 +245,6 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     std::vector<float> point_buffer_;
     std::mutex buffer_mutex_;
-    rclcpp::Time last_pub_time_;
     int socket_;
     std::thread thread_;
 };
