@@ -138,14 +138,16 @@ private:
             uint8_t msg_type = buffer[0];
     
             if (msg_type == MSG_POINTCLOUD) {
-                // printf("Received MSG_POINTCLOUD at time: %f\n", now().seconds());
-                const float* float_data = reinterpret_cast<const float*>(buffer.data() + 1);
-                size_t num_floats = (recv_len - 1) / sizeof(float);
-                if (num_floats % 3 != 0) return;
+                constexpr float scale = 1.0f / 1000.0f;
+
+                // PointCloud message from int16_t data
+                const int16_t* int16_data = reinterpret_cast<const int16_t*>(buffer.data() + 1);
+                size_t num_ints = (recv_len - 1) / sizeof(int16_t);
+                if (num_ints % 3 != 0) return;
 
                 // std::lock_guard<std::mutex> lock(buffer_mutex_);
                 // point_buffer_.insert(point_buffer_.end(), float_data, float_data + num_floats);
-                size_t num_points = num_floats / 3;
+                size_t num_points = num_ints / 3;
                 rclcpp::Time timestamp = now();
 
                 // === Publish PointCloud2 ===
@@ -168,8 +170,12 @@ private:
                 field.name = "y"; field.offset = 4; cloud_msg.fields.push_back(field);
                 field.name = "z"; field.offset = 8; cloud_msg.fields.push_back(field);
 
-                cloud_msg.data.resize(num_floats * sizeof(float));
-                memcpy(cloud_msg.data.data(), float_data, cloud_msg.data.size());
+                // Allocate memory for decompressed float data
+                cloud_msg.data.resize(num_points * 3 * sizeof(float));
+                float* out_data = reinterpret_cast<float*>(cloud_msg.data.data());
+                for (size_t i = 0; i < num_ints; ++i) {
+                    out_data[i] = static_cast<float>(int16_data[i]) * scale;
+                }
 
                 publisher_->publish(cloud_msg);
 
@@ -193,9 +199,9 @@ private:
                 scan_msg.ranges.assign(num_beams, std::numeric_limits<float>::infinity());
 
                 for (size_t i = 0; i < num_points; ++i) {
-                    float x = float_data[3 * i];
-                    float y = float_data[3 * i + 1];
-                    float z = float_data[3 * i + 2];
+                    float x = out_data[3 * i];
+                    float y = out_data[3 * i + 1];
+                    float z = out_data[3 * i + 2];
 
                     if (std::abs(z) > 0.1f) continue;
 
