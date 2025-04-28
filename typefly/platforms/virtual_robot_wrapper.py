@@ -71,11 +71,16 @@ class VirtualRobotWrapper(RobotWrapper):
             },
             {
                 "name": "orienting",
-                "definition": "4{_1=ox($1);?_1>0.6{rotate(-15)};?_1<0.4{rotate(15)};_2=ox($1);?_2<0.6&&_2>0.4{->True}}->False",
+                "definition": "4{_1=object_x($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False",
                 "description": "Rotate to align with object $1",
             },
             {
                 "name": "goto",
+                "definition": "?orienting($1){move(80, 0)}",
+                "description": "Move to object $1 in the view (orienting then go forward)"
+            },
+            {
+                "name": "be_friendly",
                 "definition": "?orienting($1){move(80, 0)}",
                 "description": "Move to object $1 in the view (orienting then go forward)"
             }
@@ -84,7 +89,6 @@ class VirtualRobotWrapper(RobotWrapper):
         self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
         for skill in high_level_skills:
             self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
-        # print(f"{self.hl_skillset}")
 
     @overrides
     def start(self) -> bool:

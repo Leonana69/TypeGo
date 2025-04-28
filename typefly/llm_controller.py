@@ -87,7 +87,6 @@ class LLMController():
         ret_val = None
         while True:
             self.current_plan = self.planner.plan(user_instruction)
-            # self._send_message(f'[Plan]: {self.current_plan}')
             try:
                 ret_val = self.execute_minispec(self.current_plan)
             except Exception as e:

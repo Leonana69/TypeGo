@@ -85,7 +85,7 @@ class TelloWrapper(RobotWrapper):
             },
             {
                 "name": "orienting",
-                "definition": "4{_1=ox($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False",
+                "definition": "4{_1=object_x($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False",
                 "description": "Rotate to align with object $1",
             },
             {

@@ -86,8 +86,8 @@ class LowLevelSkillItem(SkillItem):
 
     @overrides
     def __repr__(self) -> str:
-        return (f"abbr: {self._abbr}, "
-                f"name: {self._name}, "
+        # return (f"abbr: {self._abbr}, "
+        return (f"name: {self._name}, "
                 f"args: {[arg for arg in self._args]}, "
                 f"description: {self._description}")
 
@@ -154,8 +154,8 @@ class HighLevelSkillItem(SkillItem):
 
     @overrides
     def __repr__(self) -> str:
-        return (f"abbr: {self._abbr}, "
-                f"name: {self._name}, "
+        # return (f"abbr: {self._abbr}, "
+        return (f"name: {self._name}, "
                 f"definition: {self.definition}, "
                 f"args: {[arg for arg in self._args]}, "
                 f"description: {self._description}")
