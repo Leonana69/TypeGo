@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import re, queue
+import copy
 from enum import Enum, auto
 import time
 from threading import Thread
@@ -11,8 +12,8 @@ from .skill_item import SKILL_RET_TYPE
 from .utils import print_t, evaluate_value
 
 def _print_debug(*args):
-    print(*args)
-    # pass
+    # print(*args)
+    pass
 
 @dataclass
 class MiniSpecReturnValue:
@@ -29,6 +30,15 @@ class MiniSpecReturnValue:
     
     def __repr__(self) -> str:
         return f'value={self.value}, replan={self.replan}'
+
+INTERRUPT_LIST: list["Statement"] = []
+# class MiniSpecInterrupt:
+#     interrupt_list: list['MiniSpecInterrupt'] = []
+#     def __init__(self, condition: str, statement: 'Statement'):
+#         self.condition = condition
+#         self.statement = statement
+#         print_t(f'[M] Interrupt: {self.condition} -> {self.statement.to_string()}')
+#         MiniSpecInterrupt.interrupt_list.append(self)
 
 LLM_PLAN_START_PREFIX = '<plan,'
 class ProgramParsingState(Enum):
@@ -147,6 +157,7 @@ class CodeAction(Enum):
     SEQ = auto()    # sequence of statements
     IF = auto()     # if statement
     LOOP = auto()   # loop statement
+    INTERRUPT = auto() # interrupt statement
 
 class StatementParsingState(Enum):
     DEFAULT = auto()
@@ -267,6 +278,10 @@ class Statement:
                         self.parse_state = StatementParsingState.CONDITION
                     elif c == ';' or c == '}':
                         return False
+                    elif c == '$':
+                        self.action = CodeAction.INTERRUPT
+                        self.parse_buffer = ''
+                        self.parse_state = StatementParsingState.CONDITION
                     elif c.isalpha() or c == '_' or c == '-':
                         self.parse_buffer = c
                         self.action = CodeAction.ATOMIC
@@ -277,6 +292,42 @@ class Statement:
                         self.parse_buffer += c
                     else:
                         raise Exception(f'Invalid character: {c}')
+                    
+                case CodeAction.INTERRUPT:
+                    # $ condition {}
+                    match self.parse_state:
+                        case StatementParsingState.CONDITION:
+                            if c == '{' and not self.quotation:
+                                self.condition.append(self.parse_buffer)
+                                self.parse_state = StatementParsingState.IF_SUB_STATEMENT
+                                self.current_statement = Statement(self.env, self.robot)
+                                self.current_statement.parse(c)
+                                self.parse_depth += 1
+                            else:
+                                # read condition between '$' and '{'
+                                self.parse_buffer += c
+                        case StatementParsingState.IF_SUB_STATEMENT:
+                            if self.current_statement.parse(c):
+                                self.sub_statements.append(self.current_statement)
+                                self.current_statement = Statement(self.env, self.robot)
+
+                            if c == '{':
+                                self.parse_depth += 1
+                            elif c == '}':
+                                self.parse_depth -= 1
+                                if self.parse_depth == 0:
+                                    assert len(self.sub_statements) == 1
+                                    interrupt_statement = Statement(None, self.robot)
+                                    interrupt_statement.condition = self.condition
+                                    interrupt_statement.sub_statements = self.sub_statements
+                                    interrupt_statement.action = CodeAction.INTERRUPT
+                                    INTERRUPT_LIST.append(interrupt_statement)
+                                    # this is an interrupt statement, get it out of the main program
+                                    self.action = CodeAction.NONE
+                                    self.parse_state = StatementParsingState.DEFAULT
+                                    self.parse_buffer = ''
+                                    self.condition = []
+                                    self.sub_statements = []
 
                 case CodeAction.ATOMIC:
                     if not self.quotation and (c == ';' or c == '}'):
@@ -609,7 +660,12 @@ class MiniSpecInterpreter:
         self.execution_history = []
 
         self.program = None
+        self.exit = False
         self.execution_thread = Thread(target=self.executor)
+        self.interrupt_thread = Thread(target=self.interrupt_handler)
+
+        self.execution_thread.start()
+        self.interrupt_thread.start()
 
     def execute(self, json_output: Stream | str) -> MiniSpecReturnValue:
         self.execution_history = []
@@ -627,13 +683,25 @@ class MiniSpecInterpreter:
             print_t(f"[M] Program received in {time.time() - self.timestamp_get_plan}s")
         else:
             print_t("[M] Start normal execution")
-            self.program.eval()
+            # self.program.eval()
 
     def executor(self):
         while True:
             if self.program and self.program.statement and self.program.statement.executable:
                 print_t("[M] Start execution")
-                self.program.statement.eval()
+                self.program.eval()
+                self.exit = True
                 return
             else:
                 time.sleep(0.005)
+
+    def interrupt_handler(self):
+        while self.exit == False:
+            if len(INTERRUPT_LIST) == 0:
+                print_t("[M] No interrupt")
+            for interrupt in INTERRUPT_LIST:
+                print_t(f"[M] Interrupt: {interrupt.condition}")
+                if interrupt.eval_condition(interrupt.condition[0]).value:
+                    print_t(f"[M] Interrupt condition {interrupt.condition[0]} is true")
+
+            time.sleep(0.1)

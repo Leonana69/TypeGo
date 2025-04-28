@@ -166,7 +166,7 @@ class RobotWrapper(ABC):
         object_name = object_name.strip('\'').lower()
 
         # try to get the object info for 10 times
-        for _ in range(10):
+        for _ in range(5):
             object_list = self.get_obj_list()
             for obj in object_list:
                 if obj.name.startswith(object_name):

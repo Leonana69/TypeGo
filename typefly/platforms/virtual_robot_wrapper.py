@@ -61,17 +61,17 @@ class VirtualRobotWrapper(RobotWrapper):
         high_level_skills = [
             {
                 "name": "scan",
-                "definition": "8{?is_visible($1){->True}rotate(45)}->False",
+                "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
                 "description": "Rotate to find object $1 when it's *not* in current view"
             },
             {
                 "name": "scan_description",
-                "definition": "8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False",
+                "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
                 "description": "Rotate to find object $1 when it's *not* in current view"
             },
             {
                 "name": "orienting",
-                "definition": "4{_1=object_x($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False",
+                "definition": "{4{_1=object_x($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False}",
                 "description": "Rotate to align with object $1",
             },
             {
@@ -81,7 +81,7 @@ class VirtualRobotWrapper(RobotWrapper):
             },
             {
                 "name": "be_friendly",
-                "definition": "lift(20);lift(-20);lift(20);lift(-20)",
+                "definition": "{lift(20);lift(-20);lift(20);lift(-20)}",
                 "description": "Make a friendly gesture by lifting up and down"
             }
         ]

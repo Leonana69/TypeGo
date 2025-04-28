@@ -130,3 +130,19 @@ Go to a chair with a laptop on it.
     "<plan, robot1>": "?_1=scan_description('Any chair with a laptop on it?'){goto(_1)}"
 }
 ```
+
+## Example 9
+```
+## Scene Description
+### robot1 (tello)
+- chair: (x:0.72, y:0.60), size: (0.19x0.30)
+
+## USER INSTRUCTION
+Find a chair in the room while being friendly to the people.
+
+## OUTPUT
+{
+    "thoughts": "Register an interrupt of being friendly when seeing people. Then use scan_description to find the chair.",
+    "<plan, robot1>": "$is_visible('person'){be_friendly()}?_1=scan_description('Any chair with a laptop on it?'){goto(_1)}"
+}
+```
