@@ -81,8 +81,8 @@ class VirtualRobotWrapper(RobotWrapper):
             },
             {
                 "name": "be_friendly",
-                "definition": "?orienting($1){move(80, 0)}",
-                "description": "Move to object $1 in the view (orienting then go forward)"
+                "definition": "lift(20);lift(-20);lift(20);lift(-20)",
+                "description": "Make a friendly gesture by lifting up and down"
             }
         ]
 
