@@ -41,7 +41,7 @@ class SkillItem(ABC):
         pass
     
     @abstractmethod
-    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> tuple[SKILL_RET_TYPE, bool]:
+    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> SKILL_RET_TYPE:
         pass
 
     def parse_args(self, args_str_list: list[SKILL_ARG_TYPE], allow_positional_args: bool = False):
@@ -76,7 +76,7 @@ class LowLevelSkillItem(SkillItem):
         self._args = args or []
     
     @overrides
-    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> tuple[SKILL_RET_TYPE, bool]:
+    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> SKILL_RET_TYPE:
         """Executes the skill with the provided arguments."""
         if callable(self._callable):
             parsed_args = self.parse_args(arg_list)
@@ -140,7 +140,7 @@ class HighLevelSkillItem(SkillItem):
         return arg_list
 
     @overrides
-    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> tuple[SKILL_RET_TYPE, bool]:
+    def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> SKILL_RET_TYPE:
         """Executes the skill with the provided arguments."""
         if len(self.skill_set_list) < 2:
             raise ValueError("Low-level skillset is not set.")
@@ -150,7 +150,7 @@ class HighLevelSkillItem(SkillItem):
         definition = self.definition
         for i in range(0, len(arg_list)):
             definition = definition.replace(f"${i + 1}", arg_list[i])
-        return (definition, False)
+        return definition
 
     @overrides
     def __repr__(self) -> str:

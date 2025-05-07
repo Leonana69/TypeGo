@@ -3,7 +3,7 @@ import re, queue
 import copy
 from enum import Enum, auto
 import time
-from threading import Thread
+from threading import Thread, Event
 from openai import Stream
 
 from .robot_wrapper import RobotWrapper
@@ -12,26 +12,11 @@ from .skill_item import SKILL_RET_TYPE
 from .utils import print_t, evaluate_value
 
 def _print_debug(*args):
-    # print(*args)
-    pass
-
-@dataclass
-class MiniSpecReturnValue:
-    value: SKILL_RET_TYPE
-    replan: bool
-
-    @classmethod
-    def from_tuple(cls, t: tuple[SKILL_RET_TYPE, bool]) -> 'MiniSpecReturnValue':
-        return cls(t[0], t[1])
-    
-    @classmethod
-    def default(cls) -> 'MiniSpecReturnValue':
-        return cls(None, False)
-    
-    def __repr__(self) -> str:
-        return f'value={self.value}, replan={self.replan}'
+    print(*args)
+    # pass
 
 INTERRUPT_LIST: list["Statement"] = []
+EXECUTION_QUEUE: queue.Queue = queue.Queue()
 # class MiniSpecInterrupt:
 #     interrupt_list: list['MiniSpecInterrupt'] = []
 #     def __init__(self, condition: str, statement: 'Statement'):
@@ -40,7 +25,6 @@ INTERRUPT_LIST: list["Statement"] = []
 #         print_t(f'[M] Interrupt: {self.condition} -> {self.statement.to_string()}')
 #         MiniSpecInterrupt.interrupt_list.append(self)
 
-LLM_PLAN_START_PREFIX = '<plan,'
 class ProgramParsingState(Enum):
     NONE = auto()
     JSON_BEGIN = auto()
@@ -52,17 +36,61 @@ class ProgramParsingState(Enum):
     JSON_END = auto()
 
 class MiniSpecProgram:
-    def __init__(self, robot_dict: dict[RobotInfo, RobotWrapper], message_queue: queue.Queue=None) -> None:
+    def __init__(self, robot: RobotWrapper, message_queue: queue.Queue=None) -> None:
         self.parse_state: ProgramParsingState = ProgramParsingState.NONE
         self.parse_buffer: str = ''
         self.skip: int = 0
 
         self.statement = None
-        self.robot_dict = robot_dict
+        self.robot = robot
         self.selected_robot = None
         self.message_queue = message_queue
 
-    def parse(self, json_output: Stream | str, stream_interpreting: bool=False) -> bool:
+        self.character_count: int = 0
+
+    def parse(self, output: Stream | str, stream_interpreting: bool=False) -> bool:
+        for chunk in output:
+            # Get the code from the chunk
+            if isinstance(chunk, str):
+                code = chunk
+            else:
+                code = chunk.choices[0].delta.content
+            
+            # Skip empty code
+            if code == None or len(code) == 0:
+                continue
+
+            for c in code:
+                self.character_count += 1
+                match self.parse_state:
+                    case ProgramParsingState.NONE:
+                        self.statement = Statement({}, self.robot)
+                        self.statement.parse('{')
+                        self.statement.parse(c)
+                        if self.message_queue:
+                            self.message_queue.put(c + '\\\\')
+                        self.parse_state = ProgramParsingState.PLAN
+
+                    case ProgramParsingState.PLAN:
+                        self.statement.parse(c, stream_interpreting)
+                        if self.message_queue:
+                            self.message_queue.put(c + '\\\\')
+                        if self.character_count == len(output):
+                            if self.statement.parse('}'):
+                                # print(self.statement.to_string())
+                                return True
+                            else:
+                                return False
+                            
+                            # # TODO: test executable
+                            # if stream_interpreting and self.statement.executable and not self.statement.running:
+                            #     # Send the statement to the execution queue
+                            #     print(f'##### Statement executable: {self.statement.action}')
+                            #     self.statement.running = True
+                            #     Statement.execution_queue.put(self.statement)
+        return False
+    
+    def _parse(self, json_output: Stream | str, stream_interpreting: bool=False) -> bool:
         for chunk in json_output:
             # Get the code from the chunk
             if isinstance(chunk, str):
@@ -84,32 +112,19 @@ class MiniSpecProgram:
                             self.parse_state = ProgramParsingState.JSON_BEGIN
 
                     case ProgramParsingState.JSON_BEGIN:
-                        if c == '<':
-                            self.parse_buffer = c
+                        if c == '"':
+                            self.parse_buffer = ""
                             self.parse_state = ProgramParsingState.PREFIX
 
                     # match for LLM_PLAN_START_PREFIX
                     case ProgramParsingState.PREFIX:
                         self.parse_buffer += c
-                        if self.parse_buffer == LLM_PLAN_START_PREFIX:
+                        if self.parse_buffer == "plan":
                             self.parse_buffer = ''
-                            self.parse_state = ProgramParsingState.ROBOT_ID
-                            self.skip = 1
-                        elif not LLM_PLAN_START_PREFIX.startswith(self.parse_buffer):
-                            self.parse_state = ProgramParsingState.JSON_BEGIN
-
-                    case ProgramParsingState.ROBOT_ID:
-                        if c == '>':
                             self.parse_state = ProgramParsingState.QUOTATION_START
-                            # match the id with the robot list
-                            for robot_info, robot in self.robot_dict.items():
-                                if robot_info.robot_id == self.parse_buffer:
-                                    self.selected_robot = robot
-                                    break
-                            if not self.selected_robot:
-                                raise Exception(f'Invalid robot id: {self.parse_buffer}')
-                        else:
-                            self.parse_buffer += c
+                            self.skip = 1
+                        elif not "plan".startswith(self.parse_buffer):
+                            self.parse_state = ProgramParsingState.JSON_BEGIN
 
                     case ProgramParsingState.QUOTATION_START:
                         if c == ':':
@@ -117,7 +132,7 @@ class MiniSpecProgram:
                         elif self.parse_buffer == ':' and c == '"':
                             self.parse_buffer = ''
                             self.parse_state = ProgramParsingState.PLAN
-                            self.statement = Statement({}, self.selected_robot)
+                            self.statement = Statement({}, self.robot)
                             self.statement.parse('{')
                         else:
                             continue
@@ -148,8 +163,11 @@ class MiniSpecProgram:
                         return False
         return False
     
-    def eval(self) -> MiniSpecReturnValue:
-        return self.statement.eval()
+    def eval(self) -> SKILL_RET_TYPE:
+        # TODO: fix this
+        rslt = self.statement.eval()
+        self.robot.memory.execute(self.statement.to_string_original(), rslt)
+        return rslt
     
 class CodeAction(Enum):
     NONE = auto()
@@ -194,6 +212,11 @@ class Statement:
         self.env = env
         self.robot = robot
 
+        # Add a pause event
+        self.active_high_level_skill = None
+        self.pause_event = Event()
+        self.pause_event.set()  # Initially allow execution
+
     """
     Print the statement in a simple format for debugging.
     """
@@ -205,6 +228,28 @@ class Statement:
             s += f'[{self.loop_count}] {{...}}'
         elif self.action == CodeAction.SEQ:
             s += '{...}'
+        elif self.action == CodeAction.ATOMIC:
+            s += f'{self.sub_statements[0]}'
+        else:
+            raise Exception('Invalid action')
+        
+        return s
+    
+    def to_string_original(self) -> str:
+        """
+        Print the original statement.
+        """
+        s = ''
+        if self.action == CodeAction.IF:
+            s += f'? {self.condition[0]} {{{self.sub_statements[0].to_string_original()}}}'
+        elif self.action == CodeAction.LOOP:
+            s += f'[{self.loop_count}] {{{self.sub_statements[0].to_string_original()}}}'
+        elif self.action == CodeAction.SEQ:
+            for statement in self.sub_statements:
+                if isinstance(statement, str):
+                    s += f'{statement}; '
+                else:
+                    s += f'{statement.to_string_original()}; '
         elif self.action == CodeAction.ATOMIC:
             s += f'{self.sub_statements[0]}'
         else:
@@ -423,11 +468,37 @@ class Statement:
                             
         return False
     
-    def eval(self) -> MiniSpecReturnValue:
+    def pause(self):
+        """Pause the execution of the statement."""
+        print_t(f'Pause statement: {self.to_string_simple()}')
+        self.pause_event.clear()
+
+        if self.active_high_level_skill:
+            self.active_high_level_skill.pause()
+
+        for sub_statement in self.sub_statements:
+            if isinstance(sub_statement, Statement):
+                sub_statement.pause()
+
+    def resume(self):
+        """Resume the execution of the statement."""
+        self.pause_event.set()
+
+        if self.active_high_level_skill:
+            self.active_high_level_skill.resume()
+
+        for sub_statement in self.sub_statements:
+            if isinstance(sub_statement, Statement):
+                sub_statement.resume()
+
+    def eval(self) -> SKILL_RET_TYPE:
         _print_debug(f'Eval statement: {self.to_string_simple()}')
         while not self.executable:
             time.sleep(0.1)
-        default_ret_val = MiniSpecReturnValue.default()
+        default_ret_val: SKILL_RET_TYPE = None
+
+        # Check if the statement is paused
+        self.pause_event.wait()  # Wait until the event is set
 
         match self.action:
             case CodeAction.ATOMIC:
@@ -436,18 +507,15 @@ class Statement:
 
             case CodeAction.SEQ:
                 for statement in self.sub_statements:
-                    ret_val = statement.eval()
-                    if ret_val.replan or statement.ret:
+                    default_ret_val = statement.eval()
+                    if statement.ret:
                         self.ret = True
-                        return ret_val
+                        return default_ret_val
 
             case CodeAction.IF:
                 for i in range(len(self.condition)):
-                    condition_val = self.eval_condition(self.condition[i])
-                    if condition_val.replan:
-                        return condition_val
-                    
-                    if condition_val.value == True:
+                    self.pause_event.wait()  # Check for pause
+                    if self.eval_condition(self.condition[i]) == True:
                         ret_val = self.sub_statements[i].eval()
                         if self.sub_statements[i].ret:
                             self.ret = True
@@ -463,7 +531,7 @@ class Statement:
                 assert len(self.sub_statements) == 1
                 for i in range(self.loop_count):
                     ret_val = self.sub_statements[0].eval()
-                    if ret_val.replan or self.sub_statements[0].ret:
+                    if self.sub_statements[0].ret:
                         self.ret = True
                         return ret_val
 
@@ -471,7 +539,8 @@ class Statement:
                 raise Exception('Invalid action')
         return default_ret_val
 
-    def eval_function(self, func: str) -> MiniSpecReturnValue:
+    def eval_function(self, func: str) -> SKILL_RET_TYPE:
+        self.pause_event.wait()  # Check for pause
         _print_debug(f'Eval function: {func}')
 
         lp = func.find('(')
@@ -488,30 +557,28 @@ class Statement:
             args = re.split(r",\s*(?![^()]*\))", args)
 
         for i in range(len(args)):
-            val = self.eval_expr(args[i])
-            if val.replan:
-                return val
-            args[i] = val.value
+            args[i] = self.eval_expr(args[i])
             
-        print(func_name, args)
+        # print(func_name, args)
 
         ll_skill = self.robot.ll_skillset.get_skill(func_name)
         if ll_skill:
             rslt = ll_skill.execute(args)
             _print_debug(f'Executing low-level skill: {ll_skill.name} {args} {rslt}')
-            return MiniSpecReturnValue.from_tuple(rslt)
+            return rslt
 
         hl_skill = self.robot.hl_skillset.get_skill(func_name)
         if hl_skill:
             _print_debug(f'Executing high-level skill: {hl_skill.name}', args, hl_skill.execute(args)[0])
-            s = Statement(self.env, self.robot)
-            s.parse(hl_skill.execute(args)[0])
-            val = s.eval()
+            self.active_high_level_skill = Statement(self.env, self.robot)
+            self.active_high_level_skill.parse(hl_skill.execute(args)[0])
+            val = self.active_high_level_skill.eval()
             return val
         
         raise Exception(f'Skill {func_name} is not defined')
 
-    def eval_expr(self, expr: str) -> MiniSpecReturnValue:
+    def eval_expr(self, expr: str) -> SKILL_RET_TYPE:
+        self.pause_event.wait()  # Check for pause
         _print_debug(f'Eval expr: {expr}')
         expr = expr.strip()
 
@@ -525,7 +592,7 @@ class Statement:
         # Handle return value (->)
         if expr.startswith('->'):
             self.ret = True
-            return MiniSpecReturnValue(self.eval_expr(expr.lstrip('->')).value, False)
+            return self.eval_expr(expr.lstrip('->'))
         
         # Handle variable assignment (_var = ...)
         if expr.startswith('_') and '=' in expr:
@@ -533,8 +600,8 @@ class Statement:
             var = var.strip()
             _print_debug(f'Eval expr var assign: {var}={expr}')
             ret_val = self.eval_expr(expr)
-            _print_debug(f'==> var assign: {var}={ret_val.value}')
-            self.env[var] = ret_val.value
+            _print_debug(f'==> var assign: {var}={ret_val}')
+            self.env[var] = ret_val
             return ret_val
         
         # Handle arithmetic operations
@@ -574,40 +641,39 @@ class Statement:
                 if len(operands) < 2:
                     continue
                 # Evaluate the first operand
-                result = self.eval_expr(operands[0]).value
+                result = self.eval_expr(operands[0])
                 # Apply the operator to the remaining operands
                 for operand in operands[1:]:
-                    result = func(result, self.eval_expr(operand.strip()).value)
-                return MiniSpecReturnValue(result, False)
+                    result = func(result, self.eval_expr(operand.strip()))
+                return result
 
         # Handle variables, constants, and function calls
         if expr.startswith('_'):
-            return MiniSpecReturnValue(self._get_env(expr), False)
+            return self._get_env(expr)
         elif expr == 'True' or expr == 'False':
-            return MiniSpecReturnValue(evaluate_value(expr), False)
+            return evaluate_value(expr)
         elif expr[0].isalpha():
             return self.eval_function(expr)
         else:
-            return MiniSpecReturnValue(evaluate_value(expr), False)
+            return evaluate_value(expr)
 
-    def eval_condition(self, condition: str) -> MiniSpecReturnValue:
+    def eval_condition(self, condition: str) -> SKILL_RET_TYPE:
+        self.pause_event.wait()  # Check for pause
         ### TODO: add support for nested conditions
 
         # Multiple conditions
         if '&&' in condition:
             conditions = condition.split('&&')
             for c in conditions:
-                ret_val = self.eval_condition(c)
-                if ret_val.replan or ret_val.value == False:
-                    return ret_val
-            return MiniSpecReturnValue(True, False)
+                if self.eval_condition(c) == False:
+                    return False
+            return True
         if '||' in condition:
             conditions = condition.split('||')
             for c in conditions:
-                ret_val = self.eval_condition(c)
-                if ret_val.replan or ret_val.value != False:
-                    return ret_val
-            return MiniSpecReturnValue(False, False)
+                if self.eval_condition(c) == True:
+                    return True
+            return False
         
         # Single condition
         parts = re.split(r'(>|<|==|!=)', condition)
@@ -616,58 +682,58 @@ class Statement:
 
         operand_1 = parts[0]
         operand_1 = self.eval_expr(operand_1)
-        if operand_1.replan:
-            return operand_1
 
         if len(parts) == 3:
             comparator, operand_2 = parts[1], parts[2]
             operand_2 = self.eval_expr(operand_2)
-            if operand_2.replan:
-                return operand_2
-            _print_debug(f'Condition ops: {operand_1.value} {comparator} {operand_2.value}')
+            _print_debug(f'Condition ops: {operand_1} {comparator} {operand_2}')
         else:
-            _print_debug(f'Condition ops: {operand_1.value}')
-            return MiniSpecReturnValue(operand_1.value != False, False)
+            _print_debug(f'Condition ops: {operand_1}')
+            return operand_1 != False
 
-        if isinstance(operand_1.value, (int, float)) and isinstance(operand_2.value, (int, float)):
-            operand_1.value = float(operand_1.value)
-            operand_2.value = float(operand_2.value)
+        if isinstance(operand_1, (int, float)) and isinstance(operand_2, (int, float)):
+            operand_1 = float(operand_1)
+            operand_2 = float(operand_2)
 
-        if type(operand_1.value) != type(operand_2.value):
+        if type(operand_1) != type(operand_2):
             if comparator == '!=':
-                return MiniSpecReturnValue(True, False)
+                return True
             elif comparator == '==':
-                return MiniSpecReturnValue(False, False)
+                return False
             else:
-                raise Exception(f'Invalid comparator: {operand_1.value}:{type(operand_1.value)} {operand_2.value}:{type(operand_2.value)}')
+                raise Exception(f'Invalid comparator: {operand_1}:{type(operand_1)} {operand_2}:{type(operand_2)}')
 
+        cmp = None
         if comparator == '>':
-            cmp = operand_1.value > operand_2.value
+            cmp = operand_1 > operand_2
         elif comparator == '<':
-            cmp = operand_1.value < operand_2.value
+            cmp = operand_1 < operand_2
         elif comparator == '==':
-            cmp = operand_1.value == operand_2.value
+            cmp = operand_1 == operand_2
         elif comparator == '!=':
-            cmp = operand_1.value != operand_2.value
-        
-        return MiniSpecReturnValue(cmp, False)
+            cmp = operand_1 != operand_2
+
+        if cmp is None:
+            raise Exception(f'Invalid comparator: {comparator}')
+        return cmp
 
 class MiniSpecInterpreter:
-    def __init__(self, message_queue: queue.Queue, robot_dict: dict[RobotInfo, RobotWrapper]):
-        self.robot_dict = robot_dict
+    def __init__(self, message_queue: queue.Queue, robot: RobotWrapper):
+        self.robot = robot
         self.message_queue = message_queue
 
         self.execution_history = []
 
         self.program = None
         self.exit = False
-        self.execution_thread = Thread(target=self.executor)
+
         self.interrupt_thread = Thread(target=self.interrupt_handler)
+        self.execution_thread = Thread(target=self.executor)
 
         self.execution_thread.start()
         self.interrupt_thread.start()
 
-    def execute(self, json_output: Stream | str) -> MiniSpecReturnValue:
+    def execute(self, json_output: Stream | str) -> SKILL_RET_TYPE:
         self.execution_history = []
         self.timestamp_get_plan = time.time()
 
@@ -676,14 +742,13 @@ class MiniSpecInterpreter:
         if stream_interpreting:
             self.execution_thread.start()
 
-        self.program = MiniSpecProgram(self.robot_dict, self.message_queue)
+        self.program = MiniSpecProgram(self.robot, self.message_queue)
         self.program.parse(json_output, stream_interpreting)
 
         if stream_interpreting:
             print_t(f"[M] Program received in {time.time() - self.timestamp_get_plan}s")
         else:
             print_t("[M] Start normal execution")
-            # self.program.eval()
 
     def executor(self):
         while True:
@@ -701,7 +766,13 @@ class MiniSpecInterpreter:
                 print_t("[M] No interrupt")
             for interrupt in INTERRUPT_LIST:
                 print_t(f"[M] Interrupt: {interrupt.condition}")
-                if interrupt.eval_condition(interrupt.condition[0]).value:
+                if interrupt.eval_condition(interrupt.condition[0]):
                     print_t(f"[M] Interrupt condition {interrupt.condition[0]} is true")
+                    self.program.statement.pause()
+                    while interrupt.eval_condition(interrupt.condition[0]):
+                        time.sleep(0.5)
+
+                    print_t(f"[M] Resuming program execution")
+                    self.program.statement.resume()
 
             time.sleep(0.1)

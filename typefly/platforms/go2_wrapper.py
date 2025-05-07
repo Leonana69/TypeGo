@@ -261,7 +261,7 @@ class Go2Wrapper(RobotWrapper):
         self._stop_moving(self.action_wait_time)
 
     @overrides
-    def move(self, dx: float, dy: float) -> tuple[bool, bool]:
+    def move(self, dx: float, dy: float) -> bool:
         """
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
@@ -277,10 +277,10 @@ class Go2Wrapper(RobotWrapper):
         # Perform the movement
         self._move(linear_x=dx_m, linear_y=dy_m, duration=duration)
 
-        return True, False
+        return True
 
     @overrides
-    def rotate(self, deg: float) -> tuple[bool, bool]:
+    def rotate(self, deg: float) -> bool:
         """
         Rotates the robot by the specified angle in degrees.
         """
@@ -301,5 +301,5 @@ class Go2Wrapper(RobotWrapper):
 
         self._move(angular_z=angular_z, duration=duration)
 
-        return True, False
+        return True
         

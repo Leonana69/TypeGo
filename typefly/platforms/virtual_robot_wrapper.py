@@ -8,7 +8,7 @@ from ..robot_wrapper import RobotWrapper, RobotObservation
 from ..yolo_client import YoloClient
 from ..robot_info import RobotInfo
 
-SKILL_EXECUTION_TIME = 0.2
+SKILL_EXECUTION_TIME = 1
 
 class VirtualObservation(RobotObservation):
     def __init__(self, robot_info: RobotInfo, rate: int = 10):
@@ -60,16 +60,6 @@ class VirtualRobotWrapper(RobotWrapper):
         
         high_level_skills = [
             {
-                "name": "scan",
-                "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
-                "description": "Rotate to find object $1 when it's *not* in current view"
-            },
-            {
-                "name": "scan_description",
-                "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
-                "description": "Rotate to find object $1 when it's *not* in current view"
-            },
-            {
                 "name": "orienting",
                 "definition": "{4{_1=object_x($1);?_1>0.6{rotate(-15)}:?_1<0.4{rotate(15)}:{->True}}->False}",
                 "description": "Rotate to align with object $1",
@@ -100,18 +90,18 @@ class VirtualRobotWrapper(RobotWrapper):
         self.observation.stop()
 
     @overrides
-    def move(self, dx: float, dy: float) -> tuple[bool, bool]:
+    def move(self, dx: float, dy: float) -> bool:
         print(f"-> Move by ({dx}, {dy}) cm")
         time.sleep(SKILL_EXECUTION_TIME)
-        return True, False
+        return True
 
     @overrides
-    def rotate(self, deg: float) -> tuple[bool, bool]:
+    def rotate(self, deg: float) -> bool:
         print(f"-> Rotate by {deg} degrees")
         time.sleep(SKILL_EXECUTION_TIME)
-        return True, False
+        return True
     
-    def lift(self, dist: float) -> tuple[bool, bool]:
+    def lift(self, dist: float) -> bool:
         print(f"-> Lift for {dist} cm")
         time.sleep(SKILL_EXECUTION_TIME)
-        return True, False
+        return True

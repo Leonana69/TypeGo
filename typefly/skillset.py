@@ -91,8 +91,7 @@ class SkillSet():
 
         skillset.add_low_level_skill("log", other_skills[0], "Print text to user", args=[SkillArg("text", str)])
         skillset.add_low_level_skill("delay", other_skills[1], "Wait for seconds", args=[SkillArg("sec", float)])
-        skillset.add_low_level_skill("re_plan", other_skills[2], "Trigger replanning")
-        skillset.add_low_level_skill("probe", other_skills[3], "Query LLM for reasoning", args=[SkillArg("query", str)])
+        skillset.add_low_level_skill("probe", other_skills[2], "Query LLM for reasoning", args=[SkillArg("query", str)])
 
         return skillset
     

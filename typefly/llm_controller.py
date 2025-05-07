@@ -2,6 +2,7 @@ from PIL import Image
 import queue, io, base64
 from openai import Stream
 from typing import Optional
+import time
 
 from .yolo_client import YoloClient
 from .platforms.virtual_robot_wrapper import VirtualRobotWrapper
@@ -12,7 +13,7 @@ from .minispec_interpreter import MiniSpecInterpreter
 from .robot_info import RobotInfo
 
 class LLMController():
-    def __init__(self, robot_info_list: list[RobotInfo], message_queue: Optional[queue.Queue]=None):
+    def __init__(self, robot_info: RobotInfo, message_queue: Optional[queue.Queue]=None):
         self.message_queue = message_queue
 
         self.planner = LLMPlanner()
@@ -22,25 +23,23 @@ class LLMController():
             self.probe
         ]
 
-        self.robots: dict[RobotInfo, RobotWrapper] = {}
-        for info in robot_info_list:
-            if info.robot_type == "virtual":
-                self.robots[info] = VirtualRobotWrapper(info, self.controller_func)
-            elif info.robot_type == "tello":
-                from .platforms.tello_wrapper import TelloWrapper
-                self.robots[info] = TelloWrapper(info, self.controller_func)
-            elif info.robot_type == "go2":
-                from .platforms.go2_wrapper import Go2Wrapper
-                self.robots[info] = Go2Wrapper(info, self.controller_func)
-            elif info.robot_type == "pod":
-                from .platforms.pod_wrapper import PodWrapper
-                self.robots[info] = PodWrapper(info, self.controller_func)
+        if robot_info.robot_type == "virtual":
+            self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
+        elif robot_info.robot_type == "tello":
+            from .platforms.tello_wrapper import TelloWrapper
+            self.robot = TelloWrapper(robot_info, self.controller_func)
+        elif robot_info.robot_type == "go2":
+            from .platforms.go2_wrapper import Go2Wrapper
+            self.robot = Go2Wrapper(robot_info, self.controller_func)
+        elif robot_info.robot_type == "pod":
+            from .platforms.pod_wrapper import PodWrapper
+            self.robot = PodWrapper(robot_info, self.controller_func)
         
-        self.planner.set_robot_dict(self.robots)
+        self.planner.set_robot(self.robot)
         self.current_plan = None
         self.execution_history = None
 
-    def user_log(self, content: str | Image.Image) -> tuple[None, bool]:
+    def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
             buffer = io.BytesIO()
             content.save(buffer, format="JPEG")
@@ -49,25 +48,23 @@ class LLMController():
             text = content.strip('\'')
             self._send_message(f'[LOG] {text}')
             print_t(f'[LOG] {text}')
-        return True, False
+        return True
 
-    def probe(self, query: str, robot_info: RobotInfo) -> str:
-        return self.planner.probe(query, robot_info)
+    def probe(self, query: str) -> str:
+        return self.planner.probe(query)
 
     def _send_message(self, message: str):
         if self.message_queue is not None:
             self.message_queue.put(message)
 
     def start_controller(self):
-        for (_, wrapper) in self.robots.items():
-            wrapper.start()
+        self.robot.start()
         
     def stop_controller(self):
-        for (_, wrapper) in self.robots.items():
-            wrapper.stop()
+        self.robot.stop()
 
-    def fetch_robot_observation(self, robot_info: RobotInfo, overlay: bool=False) -> Optional[Image.Image]:
-        obs = self.robots[robot_info].observation
+    def fetch_robot_observation(self, overlay: bool=False) -> Optional[Image.Image]:
+        obs = self.robot.observation
         if not obs or not obs.image_process_result:
             return None
 
@@ -78,7 +75,7 @@ class LLMController():
         return image
     
     def execute_minispec(self, json_output: Stream | str):
-        interpreter = MiniSpecInterpreter(self.message_queue, self.robots)
+        interpreter = MiniSpecInterpreter(self.message_queue, self.robot)
         interpreter.execute(json_output)
 
     def handle_task(self, user_instruction: str):
@@ -86,7 +83,10 @@ class LLMController():
         self._send_message('Planning...')
         ret_val = None
         while True:
+            t1 = time.time()
             self.current_plan = self.planner.plan(user_instruction)
+            t2 = time.time()
+            print_t(f"[C] Planning time: {t2 - t1:.2f}s")
             try:
                 ret_val = self.execute_minispec(self.current_plan)
             except Exception as e:

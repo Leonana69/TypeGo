@@ -134,7 +134,7 @@ class PodWrapper(RobotWrapper):
         self.podtp.disconnect()
 
     @overrides
-    def move(self, dx: float, dy: float) -> tuple[bool, bool]:
+    def move(self, dx: float, dy: float) -> bool:
         print(f"-> Move by ({dx}, {dy}) cm")
         if dx != 0:
             self.podtp.command_position(self._cap_dist(dx) / 100.0, 0, 0, 0)
@@ -143,23 +143,23 @@ class PodWrapper(RobotWrapper):
         if dy != 0:
             self.podtp.command_position(0, self._cap_dist(dx) / 100.0, 0, 0)
         time.sleep(EXECUTION_DELAY)
-        return True, False
+        return True
 
     @overrides
-    def rotate(self, deg: float) -> tuple[bool, bool]:
+    def rotate(self, deg: float) -> bool:
         print(f"-> Rotate by {deg} degrees")
         self.podtp.command_position(0, 0, 0, deg)
         time.sleep(EXECUTION_DELAY)
-        return True, False
+        return True
     
-    def lift(self, dist: float) -> tuple[bool, bool]:
+    def lift(self, dist: float) -> bool:
         print(f"-> Lift for {dist} cm")
         self.podtp.command_position(0, 0, self._cap_dist(dist) / 100.0, 0)
         time.sleep(EXECUTION_DELAY)
-        return True, False
+        return True
     
-    def land(self) -> tuple[bool, bool]:
+    def land(self) -> bool:
         print("-> Land")
         self.podtp.command_land()
         time.sleep(EXECUTION_DELAY)
-        return True, False
+        return True

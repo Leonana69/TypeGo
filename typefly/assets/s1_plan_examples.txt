@@ -1,0 +1,37 @@
+# Example 1
+```
+## USER INSTRUCTION
+I'm hungry.
+
+## SCENE DESCRIPTION
+- person: (x:0.54, y:0.63), size: (0.41x0.74)
+- apple: (x:0.28, y:0.52), size: (0.13x0.20)
+
+## OUTPUT
+["get the apple"]
+```
+
+# Example 2
+```
+## USER INSTRUCTION
+Find a bottle and take a close picture of it.
+
+## SCENE DESCRIPTION
+- person: (x:0.58, y:0.63), size: (0.32x0.70)
+- chair: (x:0.70, y:0.32), size: (0.37x0.34)
+
+## OUTPUT
+["find a bottle", "approach the bottle", "take a picture of the bottle"]
+```
+
+# Example 3
+```
+## USER INSTRUCTION
+Go to
+
+## SCENE DESCRIPTION
+- apple: (x:0.35, y:0.31), size: (0.10x0.14)
+
+## OUTPUT
+["ask for clarification"]
+```
