@@ -35,7 +35,7 @@ def gstreamer_test(folder_path: str = None):
     cap.release()
     cv2.destroyAllWindows()
 
-BASE_URL = "http://192.168.8.213:18080"
+BASE_URL = "http://192.168.0.253:18080"
 def test_move(dx, dy):
     move_payload = {
         "command": "move",
@@ -111,5 +111,5 @@ def test_control_api():
 
 if __name__ == "__main__":
     # test_control_api()
-    gstreamer_test('./cache')
-    # test_get_state()
+    # gstreamer_test('./cache')
+    test_get_state()

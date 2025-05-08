@@ -33,8 +33,14 @@ class RobotObservation(ABC):
         self._orientation: Optional[ndarray] = None
         self._position: Optional[ndarray] = None
 
-        self._image_process_lock = threading.Lock()
+        # Add individual locks for each property
+        self._image_lock = threading.Lock()
+        self._depth_lock = threading.Lock()
+        self._orientation_lock = threading.Lock()
+        self._position_lock = threading.Lock()
+
         self._image_process_result: tuple[Image.Image, list[ObjectInfo]] = (None, [])
+        self._image_process_lock = threading.Lock()
 
         self.running: bool = False
         self.thread = threading.Thread(target=self.update_observation, daemon=True)
@@ -59,19 +65,43 @@ class RobotObservation(ABC):
 
     @property
     def image(self) -> Optional[Image.Image]:
-        return self._image
+        with self._image_lock:
+            return self._image
+    
+    @image.setter
+    def image(self, value: Optional[Image.Image]):
+        with self._image_lock:
+            self._image = value
 
     @property
     def depth(self) -> Optional[ndarray]:
-        return self._depth
+        with self._depth_lock:
+            return self._depth
+        
+    @depth.setter
+    def depth(self, value: Optional[ndarray]):
+        with self._depth_lock:
+            self._depth = value
 
     @property
     def orientation(self) -> Optional[ndarray]:
-        return self._orientation
+        with self._orientation_lock:
+            return self._orientation
+        
+    @orientation.setter
+    def orientation(self, value: Optional[ndarray]):
+        with self._orientation_lock:
+            self._orientation = value
 
     @property
     def position(self) -> Optional[ndarray]:
-        return self._position
+        with self._position_lock:
+            return self._position
+        
+    @position.setter
+    def position(self, value: Optional[ndarray]):
+        with self._position_lock:
+            self._position = value
     
     @property
     def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]]:
@@ -161,6 +191,10 @@ class RobotWrapper(ABC):
 
     @abstractmethod
     def rotate(self, deg: float) -> bool:
+        pass
+
+    @abstractmethod
+    def get_state(self) -> str:
         pass
 
     # vision skills

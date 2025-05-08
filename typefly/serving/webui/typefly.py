@@ -20,7 +20,7 @@ def generate_povs():
     html_content += f"""
     <div>
         <img src="http://localhost:50000/robot-pov/" alt=robot-pov" 
-                style="border-radius: 10px; object-fit: contain; width: 640px;">
+                style="border-radius: 10px; object-fit: contain; width: 1;">
     </div>
     """
     html_content += "</div>"
