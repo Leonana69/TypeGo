@@ -14,6 +14,7 @@ from threading import Thread
 
 from typego.robot_info import RobotInfo
 from typego.utils import print_t
+from typego.llm_controller import LLMController
 
 CURRENT_DIR = get_package_share_directory('typego')
 
@@ -33,7 +34,7 @@ def generate_povs():
 class TypeFly:
     def __init__(self, robot_info: RobotInfo):
         self.message_queue = queue.Queue()
-        # self.llm_controller = LLMController(robot_info, self.message_queue)
+        self.llm_controller = LLMController(robot_info, self.message_queue)
         self.system_stop = False
 
         self.ui = gr.Blocks(title="TypeFly")
@@ -101,7 +102,7 @@ class TypeFly:
 
     def run(self):
         # Start the LLM controller
-        # self.llm_controller.start_controller()
+        self.llm_controller.start_controller()
 
         # Start the Flask server for video feed
         app = Flask(__name__)
@@ -123,7 +124,7 @@ class TypeFly:
             time.sleep(1)
 
         # Stop the LLM controller
-        # self.llm_controller.stop_controller()
+        self.llm_controller.stop_controller()
 
 """
 Available robot types: ['tello', 'virtual', 'go2']

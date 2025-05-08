@@ -1,0 +1,45 @@
+# Example 1
+```
+## USER INSTRUCTION
+None
+
+## ROBOT STATE
+{{
+    "posture": "lying",
+    "x": 0.5,
+    "y": 0.5,
+    "yaw": 28.3,
+    "action": "idle"
+}}
+
+
+## SCENE DESCRIPTION
+- person: (x:0.54, y:0.63), size: (0.41x0.74), depth: 1.87
+- apple: (x:0.28, y:0.52), size: (0.13x0.20), depth: 0.65
+
+## OUTPUT
+["play with the person"]
+```
+
+# Example 2
+```
+## USER INSTRUCTION
+None
+
+## ROBOT STATE
+{{
+    "posture": "standing",
+    "x": 1.59,
+    "y": 2.50,
+    "yaw": 60.8,
+    "action": ""
+}}
+
+
+## SCENE DESCRIPTION
+- person: (x:0.54, y:0.63), size: (0.41x0.74), depth: 1.87
+- apple: (x:0.28, y:0.52), size: (0.13x0.20), depth: 0.65
+
+## OUTPUT
+stand_up()
+```
