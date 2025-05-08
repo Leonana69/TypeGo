@@ -1,4 +1,4 @@
-.PHONY: ros_stop, ros_start, ros_remove, ros_open, ros_build, run
+.PHONY: ros_stop, ros_start, ros_remove, ros_open, ros_build, run, build
 
 GPU_OPTIONS=--gpus all
 
@@ -33,6 +33,14 @@ ros_build:
 	docker build -t go2-livox-receiver:0.1 -f ./docker/Dockerfile .
 	@echo -n "=>"
 	@make ros_start
+
+build:
+	colcon build
+	if [ -f ./install/typego/lib/typego/webui ]; then \
+		sed -i '1s|^#!.*|#!'"$$(which python)"'|' ./install/typego/lib/typego/webui; \
+	else \
+		echo "Warning: ./install/typego/lib/typego/webui not found. Skipping shebang update."; \
+	fi
 
 run:
 	ros2 run livox_udp_receiver livox_udp_receiver_node

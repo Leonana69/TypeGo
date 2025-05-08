@@ -1,6 +1,9 @@
-#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from ament_index_python.packages import get_package_share_directory
+
+import sys
+print(sys.executable)
 
 import queue
 import os, sys
@@ -9,8 +12,10 @@ import gradio as gr
 from flask import Flask, Response
 from threading import Thread
 
-from .robot_info import RobotInfo
-from .utils import print_t
+from typego.robot_info import RobotInfo
+from typego.utils import print_t
+
+CURRENT_DIR = get_package_share_directory('typego')
 
 def generate_povs():
     """Generate HTML string for multiple drone POVs."""
@@ -124,6 +129,6 @@ class TypeFly:
 Available robot types: ['tello', 'virtual', 'go2']
 """
 def main():
-    with open(os.path.join(CURRENT_DIR, 'robot_info.json'), 'r') as f:
+    with open(os.path.join(CURRENT_DIR, 'config/robot_info.json'), 'r') as f:
         typefly = TypeFly(RobotInfo.from_dict(json.load(f)))
         typefly.run()

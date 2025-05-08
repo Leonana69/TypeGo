@@ -1,0 +1,9 @@
+{
+    "robot_id": "robot1",
+    "robot_type": "virtual",
+    "extra": {
+        "capture": 0,
+        "ip": "192.168.8.103",
+        "url": "http://192.168.0.253:18080/"
+    }
+}
