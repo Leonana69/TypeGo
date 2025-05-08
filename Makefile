@@ -1,4 +1,4 @@
-.PHONY: ros_stop, ros_start, ros_remove, ros_open, ros_build
+.PHONY: ros_stop, ros_start, ros_remove, ros_open, ros_build, run
 
 GPU_OPTIONS=--gpus all
 
@@ -33,3 +33,6 @@ ros_build:
 	docker build -t go2-livox-receiver:0.1 -f ./docker/Dockerfile .
 	@echo -n "=>"
 	@make ros_start
+
+run:
+	ros2 run livox_udp_receiver livox_udp_receiver_node
