@@ -136,7 +136,7 @@ class Go2Observation(RobotObservation):
         # Convert to Colored map_data
         map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
         self.slam_map.update_map(map_data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
-        print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
+        # print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
         
     @overrides
     def _start(self):
@@ -233,6 +233,8 @@ class Go2Wrapper(RobotWrapper):
         )
 
     def _cmd_vel_callback(self, msg: Twist):
+        if msg.linear.x == 0.0 and msg.linear.y == 0.0 and msg.angular.z == 0.0:
+            return
         control = {
             'command': 'nav',
             'vx': msg.linear.x,
@@ -240,8 +242,7 @@ class Go2Wrapper(RobotWrapper):
             'vyaw': msg.angular.z
         }
 
-        print_t(f"[Go2] Received cmd_vel: {control}")
-        # self._send_control(control)
+        self._send_control(control)
 
     @overrides
     def start(self) -> bool:
@@ -287,7 +288,7 @@ class Go2Wrapper(RobotWrapper):
             headers={"Content-Type": "application/json"}
         )
         if response.status_code != 200:
-            print_t(f"[Go2] Failed to send command: {response.json()}")
+            print_t(f"[Go2] Failed to send command: {response.text}")
 
     def _move(self, linear_x: float=0.0, linear_y: float=0.0, angular_z: float=0.0, duration: float=3.0):
         """
