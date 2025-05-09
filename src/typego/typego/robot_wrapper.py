@@ -4,8 +4,9 @@ from typing import Optional
 from numpy import ndarray
 import time, threading
 from PIL import Image
-import asyncio
+import asyncio, cv2
 import re
+import numpy as np
 
 from typego.skillset import SkillSet
 from typego.robot_info import RobotInfo
@@ -47,6 +48,37 @@ class RobotMemory:
 
         return rslt
 
+class SLAMMap:
+    def __init__(self):
+        self.map_data: Optional[ndarray] = None
+        self.width: int = 0
+        self.height: int = 0
+        self.origin: tuple[float, float] = (0.0, 0.0)
+        self.resolution: float = 0.0
+
+        self.robot_loc: tuple[float, float] = (0.0, 0.0)
+        self.robot_yaw: float = 0.0
+
+    def update_map(self, map_data: ndarray, width: int, height: int, origin: tuple[float, float], resolution: float):
+        self.map_data = map_data
+        self.width = width
+        self.height = height
+        self.origin = origin
+        self.resolution = resolution
+
+    def update_robot_state(self, robot_loc: tuple[float, float], robot_yaw: float):
+        self.robot_loc = robot_loc
+        self.robot_yaw = robot_yaw
+
+    def get_map(self) -> Optional[ndarray]:
+        u = int((self.robot_loc[0] - self.origin[0]) / self.resolution)
+        v = self.height - int((self.robot_loc[1] - self.origin[1]) / self.resolution)
+
+        map_image = self.map_data.copy()
+        cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
+        cv2.arrowedLine(map_image, (u, v), (int(u + 10 * np.cos(self.robot_yaw)), int(v - 10 * np.sin(self.robot_yaw))), (255, 0, 0), 1)
+        return map_image
+
 class RobotObservation(ABC):
     def __init__(self, robot_info: RobotInfo, rate: int):
         self.interval: float = 1.0 / rate
@@ -56,12 +88,14 @@ class RobotObservation(ABC):
         self._depth: Optional[ndarray] = None
         self._orientation: Optional[ndarray] = None
         self._position: Optional[ndarray] = None
+        self._slam_map: SLAMMap = SLAMMap()
 
         # Add individual locks for each property
         self._image_lock = threading.Lock()
         self._depth_lock = threading.Lock()
         self._orientation_lock = threading.Lock()
         self._position_lock = threading.Lock()
+        self._slam_map_lock = threading.Lock()
 
         self._image_process_result: tuple[Image.Image, list[ObjectInfo]] = (None, [])
         self._image_process_lock = threading.Lock()
@@ -93,7 +127,7 @@ class RobotObservation(ABC):
             return self._image
     
     @image.setter
-    def image(self, value: Optional[Image.Image]):
+    def image(self, value: Image.Image):
         with self._image_lock:
             self._image = value
 
@@ -103,7 +137,7 @@ class RobotObservation(ABC):
             return self._depth
         
     @depth.setter
-    def depth(self, value: Optional[ndarray]):
+    def depth(self, value: ndarray):
         with self._depth_lock:
             self._depth = value
 
@@ -113,7 +147,7 @@ class RobotObservation(ABC):
             return self._orientation
         
     @orientation.setter
-    def orientation(self, value: Optional[ndarray]):
+    def orientation(self, value: ndarray):
         with self._orientation_lock:
             self._orientation = value
 
@@ -123,7 +157,7 @@ class RobotObservation(ABC):
             return self._position
         
     @position.setter
-    def position(self, value: Optional[ndarray]):
+    def position(self, value: ndarray):
         with self._position_lock:
             self._position = value
     
@@ -131,6 +165,21 @@ class RobotObservation(ABC):
     def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]]:
         with self._image_process_lock:
             return self._image_process_result
+        
+    @image_process_result.setter
+    def image_process_result(self, value: tuple[Image.Image, list[ObjectInfo]]):
+        with self._image_process_lock:
+            self._image_process_result = value
+        
+    @property
+    def slam_map(self) -> Optional[SLAMMap]:
+        with self._slam_map_lock:
+            return self._slam_map
+    
+    @slam_map.setter
+    def slam_map(self, value: SLAMMap):
+        with self._slam_map_lock:
+            self._slam_map = value
     
     def update_observation(self):
         # Create a new event loop for this thread
@@ -150,8 +199,7 @@ class RobotObservation(ABC):
                 
                 # Clean up completed tasks
                 tasks = {t for t in tasks if not t.done()}
-                with self._image_process_lock:
-                    self._image_process_result = self.fetch_processed_result()
+                self.image_process_result = self.fetch_processed_result()
                 # Sleep for the interval
                 elapsed_time = time.time() - start_time
                 await asyncio.sleep(max(0, self.interval - elapsed_time))

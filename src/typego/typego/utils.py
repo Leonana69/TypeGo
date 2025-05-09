@@ -2,6 +2,7 @@ import datetime, cv2
 import numpy as np
 from numpy import ndarray
 from typego.skill_item import SKILL_RET_TYPE
+from PIL import Image
 
 def print_t(*args, **kwargs):
     # Get the current timestamp
@@ -91,3 +92,42 @@ class ImageRecover:
         )
         
         return recovered_img
+    
+def slam_map_overlay(image: Image.Image, slam_map: np.ndarray) -> Image.Image:
+    """
+    Overlay the SLAM map (grayscale, no transparency) on top of the image at a fixed offset.
+
+    :param image: Input PIL Image (RGB or RGBA)
+    :param slam_map: SLAM map as a 2D NumPy array (grayscale)
+    :return: PIL Image with SLAM map overlaid
+    """
+    if image is None or slam_map is None:
+        return image
+
+    dx = 10
+    dy = 10
+
+    # Convert SLAM map to RGB image (from grayscale)
+    slam_map_pil = Image.fromarray(slam_map)
+    slam_map_pil = slam_map_pil.resize(
+        (slam_map_pil.width * 2, slam_map_pil.height * 2), resample=Image.NEAREST
+    )
+
+    # Paste slam_map onto image at (dx, dy), cropping if needed
+    img_w, img_h = image.size
+    map_w, map_h = slam_map_pil.size
+
+    paste_x = max(0, dx)
+    paste_y = max(0, dy)
+    crop_x = max(0, -dx)
+    crop_y = max(0, -dy)
+    crop_w = min(map_w - crop_x, img_w - paste_x)
+    crop_h = min(map_h - crop_y, img_h - paste_y)
+
+    # Crop the slam map if it would go out of bounds
+    cropped_map = slam_map_pil.crop((crop_x, crop_y, crop_x + crop_w, crop_y + crop_h))
+
+    # Paste directly (no mask, no blending)
+    image.paste(cropped_map, (paste_x, paste_y))
+
+    return image

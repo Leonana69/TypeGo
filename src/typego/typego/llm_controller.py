@@ -8,7 +8,7 @@ from typego.yolo_client import YoloClient
 from typego.virtual_robot_wrapper import VirtualRobotWrapper
 from typego.robot_wrapper import RobotWrapper
 from typego.llm_planner import LLMPlanner
-from typego.utils import print_t
+from typego.utils import print_t, slam_map_overlay
 from typego.minispec_interpreter import MiniSpecInterpreter
 from typego.robot_info import RobotInfo
 
@@ -65,6 +65,7 @@ class LLMController():
         image, yolo_results = obs.image_process_result
         if overlay:
             image = YoloClient.plot_results_ps(image.copy(), yolo_results)
+            image = slam_map_overlay(image, obs.slam_map.get_map())
 
         return image
     

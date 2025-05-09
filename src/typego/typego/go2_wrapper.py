@@ -6,11 +6,13 @@ from PIL import Image
 import cv2
 import json
 from enum import Enum
+from scipy.spatial.transform import Rotation as R
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as ROSImage
 from tf2_msgs.msg import TFMessage
+from nav_msgs.msg import OccupancyGrid
 
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.robot_info import RobotInfo
@@ -31,12 +33,23 @@ GO2_CAM_D = np.array([[-0.07203219],
                       [ 0.05415833],
                       [-0.02288355]], dtype=np.float32)
 
+def make_transform(translation, quaternion):
+    T = np.eye(4)
+    T[:3, :3] = R.from_quat(quaternion).as_matrix()
+    T[:3, 3] = translation
+    return T
+
 class Go2Observation(RobotObservation):
     def __init__(self, robot_info: RobotInfo, rate: int = 10):
         super().__init__(robot_info, rate)
         self.yolo_client = YoloClient(robot_info)
         self.image_receover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.init_ros_obs()
+
+        self.map2odom_translation = np.array([0.0, 0.0, 0.0])
+        self.map2odom_rotation = np.array([0.0, 0.0, 0.0, 1.0])
+        self.odom2robot_translation = np.array([0.0, 0.0, 0.0])
+        self.odom2robot_rotation = np.array([0.0, 0.0, 0.0, 1.0])
 
     def init_ros_obs(self):
         rclpy.init()
@@ -57,6 +70,14 @@ class Go2Observation(RobotObservation):
             10
         )
 
+        # Subscribe to /map
+        self.node.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self._map_callback,
+            10
+        )
+
     def _image_callback(self, msg: ROSImage):
         # Convert ROS Image message to OpenCV image
         cv_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
@@ -68,18 +89,53 @@ class Go2Observation(RobotObservation):
     def _tf_callback(self, msg: TFMessage):
         # Extract position and orientation from the TF message
         for transform in msg.transforms:
-            if transform.child_frame_id == "base_link":  # Replace with your robot's frame ID
-                self.position = np.array([
+            if transform.child_frame_id == "base_link":
+                self.odom2robot_translation = np.array([
                     transform.transform.translation.x,
                     transform.transform.translation.y,
                     transform.transform.translation.z
                 ])
-
-                self.orientation = quaternion_to_rpy(
+                self.odom2robot_rotation = np.array([
                     transform.transform.rotation.x,
                     transform.transform.rotation.y,
                     transform.transform.rotation.z,
-                    transform.transform.rotation.w)
+                    transform.transform.rotation.w
+                ])
+            elif transform.child_frame_id == "odom":
+                self.map2odom_translation = np.array([
+                    transform.transform.translation.x,
+                    transform.transform.translation.y,
+                    transform.transform.translation.z
+                ])
+                self.map2odom_rotation = np.array([
+                    transform.transform.rotation.x,
+                    transform.transform.rotation.y,
+                    transform.transform.rotation.z,
+                    transform.transform.rotation.w
+                ])
+
+        T_map_odom = make_transform(self.map2odom_translation, self.map2odom_rotation)
+        T_odom_robot = make_transform(self.odom2robot_translation, self.odom2robot_rotation)
+        T_map_robot = T_map_odom @ T_odom_robot
+        self.position = T_map_robot[:3, 3]
+        self.orientation = R.from_matrix(T_map_robot[:3, :3]).as_euler('xyz')  # or .as_quat()
+        self.slam_map.update_robot_state((self.position[0], self.position[1]), self.orientation[2])
+
+    def _map_callback(self, msg: OccupancyGrid):
+        width = msg.info.width
+        height = msg.info.height
+        data = np.array(msg.data, dtype=np.int8).reshape((height, width))
+
+        # Convert OccupancyGrid to grayscale image
+        map_data = np.zeros((height, width), dtype=np.uint8)
+        map_data[data == 0] = 255      # Free space = white
+        map_data[data == -1] = 128     # Unknown = gray
+        map_data[data > 0] = 0         # Occupied = black
+        map_data = cv2.flip(map_data, 0)
+
+        # Convert to Colored map_data
+        map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
+        self.slam_map.update_map(map_data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
         
     @overrides
     def _start(self):

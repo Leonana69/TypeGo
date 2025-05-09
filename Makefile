@@ -43,4 +43,7 @@ build:
 	fi
 
 run:
-	ros2 run livox_udp_receiver livox_udp_receiver_node
+	ros2 run typego livox_udp_receiver_node
+
+run_slam:
+	ros2 launch typego slam_sync.launch.py rviz:=true
