@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation as R
 
 import rclpy
 from rclpy.node import Node
+from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image as ROSImage
 from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import OccupancyGrid
@@ -40,22 +41,20 @@ def make_transform(translation, quaternion):
     return T
 
 class Go2Observation(RobotObservation):
-    def __init__(self, robot_info: RobotInfo, rate: int = 10):
+    def __init__(self, robot_info: RobotInfo, node: Node, rate: int = 10):
         super().__init__(robot_info, rate)
         self.yolo_client = YoloClient(robot_info)
         self.image_receover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
-        self.init_ros_obs()
+        self.init_ros_obs(node)
 
         self.map2odom_translation = np.array([0.0, 0.0, 0.0])
         self.map2odom_rotation = np.array([0.0, 0.0, 0.0, 1.0])
         self.odom2robot_translation = np.array([0.0, 0.0, 0.0])
         self.odom2robot_rotation = np.array([0.0, 0.0, 0.0, 1.0])
 
-    def init_ros_obs(self):
-        rclpy.init()
-        self.node = rclpy.create_node('go2_observation')
+    def init_ros_obs(self, node: Node):
         # Subscribe to /camera/image_raw
-        self.node.create_subscription(
+        node.create_subscription(
             ROSImage,
             '/camera/image_raw',
             self._image_callback,
@@ -63,7 +62,7 @@ class Go2Observation(RobotObservation):
         )
 
         # Subscribe to /tf
-        self.node.create_subscription(
+        node.create_subscription(
             TFMessage,
             '/tf',
             self._tf_callback,
@@ -71,7 +70,7 @@ class Go2Observation(RobotObservation):
         )
 
         # Subscribe to /map
-        self.node.create_subscription(
+        node.create_subscription(
             OccupancyGrid,
             '/map',
             self._map_callback,
@@ -120,6 +119,7 @@ class Go2Observation(RobotObservation):
         self.position = T_map_robot[:3, 3]
         self.orientation = R.from_matrix(T_map_robot[:3, :3]).as_euler('xyz')  # or .as_quat()
         self.slam_map.update_robot_state((self.position[0], self.position[1]), self.orientation[2])
+        # print_t(f"[Go2] Position: {self.position}, Orientation: {self.orientation}")
 
     def _map_callback(self, msg: OccupancyGrid):
         width = msg.info.width
@@ -136,17 +136,15 @@ class Go2Observation(RobotObservation):
         # Convert to Colored map_data
         map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
         self.slam_map.update_map(map_data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
+        print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
         
     @overrides
     def _start(self):
-        self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
-        self.spin_thread.start()
+        return
     
     @overrides
     def _stop(self):
-        rclpy.shutdown()
-        if self.spin_thread is not None:
-            self.spin_thread.join()
+        return
         
     @overrides
     async def process_image(self, image: Image.Image):
@@ -174,7 +172,8 @@ class Go2Posture(Enum):
 
 class Go2Wrapper(RobotWrapper):
     def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
-        super().__init__(robot_info, Go2Observation(robot_info), system_skill_func)
+        self.init_ros_node()
+        super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node), system_skill_func)
 
         self.state = {
             "posture": Go2Posture.STANDING,
@@ -222,14 +221,41 @@ class Go2Wrapper(RobotWrapper):
         for skill in high_level_skills:
             self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
 
+    def init_ros_node(self):
+        rclpy.init()
+        self.node = rclpy.create_node('go2')
+        # Subscribe to /camera/image_raw
+        self.node.create_subscription(
+            Twist,
+            '/cmd_vel',
+            self._cmd_vel_callback,
+            10
+        )
+
+    def _cmd_vel_callback(self, msg: Twist):
+        control = {
+            'command': 'nav',
+            'vx': msg.linear.x,
+            'vy': msg.linear.y,
+            'vyaw': msg.angular.z
+        }
+
+        print_t(f"[Go2] Received cmd_vel: {control}")
+        # self._send_control(control)
+
     @overrides
     def start(self) -> bool:
+        self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
+        self.spin_thread.start()
         self.observation.start()
         return True
 
     @overrides
     def stop(self):
         self.observation.stop()
+        if self.spin_thread is not None:
+            rclpy.shutdown()
+            self.spin_thread.join()
 
     @overrides
     def get_state(self) -> str:
