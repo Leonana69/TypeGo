@@ -14,6 +14,7 @@ from typego.robot_info import RobotInfo
 
 class LLMController():
     def __init__(self, robot_info: RobotInfo, message_queue: Optional[queue.Queue]=None):
+        self.running = False
         self.message_queue = message_queue
 
         self.planner = LLMPlanner()
@@ -52,9 +53,11 @@ class LLMController():
             self.message_queue.put(message)
 
     def start_controller(self):
+        self.running = True
         self.robot.start()
         
     def stop_controller(self):
+        self.running = False
         self.robot.stop()
 
     def fetch_robot_observation(self, overlay: bool=False) -> Optional[Image.Image]:
@@ -69,15 +72,20 @@ class LLMController():
 
         return image
     
+    def continous_plan(self, rate: int = 2):
+        print_t(f"[C] Starting continuous planning...")
+        while self.running:
+            plan = self.planner.plan
+    
     def execute_minispec(self, json_output: Stream | str):
         interpreter = MiniSpecInterpreter(self.message_queue, self.robot)
         interpreter.execute(json_output)
 
-    def handle_task(self, user_instruction: str):
-        # self._send_message('[TASK]: ' + user_instruction)
+    def handle_task(self, instruction: str):
+        # self._send_message('[TASK]: ' + instruction)
         self._send_message('Planning...')
         t1 = time.time()
-        self.current_plan = self.planner.plan(user_instruction)
+        self.current_plan = self.planner.plan(instruction)
         t2 = time.time()
         print_t(f"[C] Planning time: {t2 - t1:.2f}s")
         try:

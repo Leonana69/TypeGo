@@ -28,10 +28,16 @@ class ObjectInfo:
         return ObjectInfo(json_data['name'], json_data['x'], json_data['y'], json_data['w'], json_data['h'], json_data['depth'])
 
     def __str__(self) -> str:
-        base_info = f"- {self.name}: (x:{self.x:.2f}, y:{self.y:.2f}), size: ({self.w:.2f}x{self.h:.2f})"
+        base_info = {
+            "x": round(self.x, 2),
+            "y": round(self.y, 2),
+            "size": (round(self.w, 2), round(self.h, 2))
+        }
+
         if self.depth is not None:
-            base_info += f", depth: {self.depth:.2f}"
-        return base_info
+            base_info["dist"] = round(self.depth, 2)
+
+        return f"\"{self.name}\": {base_info}"
 
 """
 Access the YOLO service through http.
@@ -40,7 +46,7 @@ class YoloClient():
     def __init__(self, robot_info: RobotInfo):
         self.robot_info = robot_info
         self.service_url = 'http://{}:{}/process'.format(EDGE_SERVICE_IP, EDGE_SERVICE_PORT)
-        self.image_size = (640, 352)
+        self.target_image_size = (640, 360)
         self._latest_result_lock = threading.Lock()
         self._latest_result = (None, [])
         self.frame_id = 0
@@ -126,13 +132,13 @@ class YoloClient():
             
             config = {
                 'robot_info': self.robot_info.to_json(),
-                'service_type': 'yolo',
+                'service_type': 'yolo3d',
                 'tracking_mode': False,
                 'image_id': self.frame_id,
                 'conf': conf
             }
             form_data = aiohttp.FormData()
-            image_bytes = YoloClient.image_to_bytes(image.resize(self.image_size))
+            image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
             form_data.add_field('image', image_bytes, filename='frame.webp', content_type='image/webp')
             form_data.add_field('json_data', json.dumps(config), content_type='application/json')
 

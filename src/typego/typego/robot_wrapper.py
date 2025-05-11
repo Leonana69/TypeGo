@@ -17,9 +17,8 @@ from typego.utils import evaluate_value
 @dataclass
 class MemoryItem:
     start: float
-    end: float | None
-    scene: str
     action: str
+    result: str
 
 class RobotMemory:
     """
@@ -29,24 +28,23 @@ class RobotMemory:
         self.robot_info = robot_info
         self.data: list[MemoryItem] = []
 
-    def add(self, scene: str, action: str):
-        if self.data:
-            self.data[-1].end = time.time()
-        self.data.append(MemoryItem(time.time(), None, scene, action))
+    def add(self, action: str, result: bool):
+        self.data.append(MemoryItem(time.time(), action, "success" if result else "failed"))
 
     def get(self) -> str:
         current_time = time.time()
         self.data = [item for item in self.data if current_time - item.start < 60]
         rslt = ""
         for item in self.data:
-            start_time = time.strftime("%H:%M:%S", time.localtime(item.start))
-            if item.end is None:
-                end_time = ""
-            else:
-                end_time = time.strftime("%H:%M:%S", time.localtime(item.end))
-            rslt += f"[{start_time}~{end_time}]: {item.scene} -> {item.action}\n"
+            start = time.strftime("%H:%M:%S", time.localtime(item.start))
+            js = {
+                "start": start,
+                "action": item.action,
+                "result": item.result
+            }
+            rslt += f"{js}\n"
 
-        return rslt
+        return f"History: [{rslt}]"
 
 class SLAMMap:
     def __init__(self):
@@ -71,6 +69,9 @@ class SLAMMap:
         self.robot_yaw = robot_yaw
 
     def get_map(self) -> Optional[ndarray]:
+        if self.map_data is None:
+            return None
+
         u = int((self.robot_loc[0] - self.origin[0]) / self.resolution)
         v = self.height - int((self.robot_loc[1] - self.origin[1]) / self.resolution)
 
@@ -277,7 +278,8 @@ class RobotWrapper(ABC):
     def get_obj_list_str(self) -> str:
         """Returns a formatted string of detected objects."""
         object_list = self.get_obj_list()
-        return "\n".join([str(obj) for obj in object_list]).replace("'", "")
+        obj_str = ",\n".join([str(obj) for obj in object_list])
+        return f"Objects: {{{obj_str}}}"
 
     def get_obj_info(self, object_name: str) -> ObjectInfo:
         object_name = object_name.strip('\'').lower()

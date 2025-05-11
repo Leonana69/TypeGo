@@ -35,7 +35,7 @@ class TypeFly:
     def __init__(self, robot_info: RobotInfo):
         self.message_queue = queue.Queue()
         self.llm_controller = LLMController(robot_info, self.message_queue)
-        self.system_stop = False
+        self.running = True
 
         self.ui = gr.Blocks(title="TypeFly")
         self.setup_ui()
@@ -57,7 +57,7 @@ class TypeFly:
     def ui_process_message(self, message: str, history: list):
         print_t(f"[S] Receiving task description: {message}")
         if message == "exit":
-            self.system_stop = True
+            self.running = False
             yield gr.ChatMessage(role="assistant", content="Shutting down...")
         elif len(message) == 0:
             yield gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
@@ -85,7 +85,7 @@ class TypeFly:
 
     def generate_mjpeg_stream(self):
         while True:
-            if self.system_stop:
+            if not self.running:
                 break
                 
             frame = self.llm_controller.fetch_robot_observation(True)
@@ -120,7 +120,7 @@ class TypeFly:
         self.ui.launch(show_api=False, server_port=50001, prevent_thread_lock=True)
 
         # Wait for the system to stop
-        while not self.system_stop:
+        while self.running:
             time.sleep(1)
 
         # Stop the LLM controller

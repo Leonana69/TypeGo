@@ -4,6 +4,12 @@ from numpy import ndarray
 from typego.skill_item import SKILL_RET_TYPE
 from PIL import Image
 
+def get_current_time() -> str:
+    """
+    Get the current time in the format HH:MM:SS
+    """
+    return datetime.datetime.now().strftime('%H:%M:%S')
+
 def print_t(*args, **kwargs):
     # Get the current timestamp
     current_time = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]

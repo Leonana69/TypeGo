@@ -1,0 +1,127 @@
+# EXAMPLE 1
+```
+## SYSTEM1 INSTRUCTION
+Play with the person.
+
+## ROBOT STATE
+State: {"posture": "lying", "x": 1.51, "y": 0.50, "yaw": 28}
+Current action: "idle()"
+History: []
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
+    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+stand_up()
+```
+
+# EXAMPLE 2
+```
+## SYSTEM1 INSTRUCTION
+Play with the person.
+
+## ROBOT STATE
+State: {"posture": "lying", "x": 1.52, "y": 0.53, "yaw": 29}
+Current action: "stand_up()"
+History: []
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
+    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+keep()
+```
+
+# EXAMPLE 3
+```
+## SYSTEM1 INSTRUCTION
+Play with the person.
+
+## ROBOT STATE
+State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 29}
+Current action: "idle()"
+History: [{"time": "14:16:08", "action": "stand_up()", "result": "success"}]
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
+    "chair": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+goto_obj("person")
+```
+
+# EXAMPLE 4
+```
+## SYSTEM1 INSTRUCTION
+Find an apple.
+
+## ROBOT STATE
+State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 31}
+Current action: "goto_obj('person')"
+History: [
+    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
+    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+]
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
+    "ball": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+done(False)
+```
+
+# EXAMPLE 5
+```
+## SYSTEM1 INSTRUCTION
+Go to location (1.50, 2.30).
+
+## ROBOT STATE
+State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
+Current action: "idle()"
+History: [
+    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
+    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+]
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
+    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+goto(1.50, 2.30)
+```
+
+# EXAMPLE 6
+```
+## SYSTEM1 INSTRUCTION
+None
+
+## ROBOT STATE
+State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
+Current action: "idle()"
+History: [
+    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
+    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+]
+
+## SCENE DESCRIPTION
+Objects: {
+    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
+}
+
+## OUTPUT
+keep()
+```

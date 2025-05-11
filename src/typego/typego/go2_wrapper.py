@@ -5,15 +5,18 @@ from overrides import overrides
 from PIL import Image
 import cv2
 import json
+import queue
 from enum import Enum
 from scipy.spatial.transform import Rotation as R
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import Image as ROSImage
 from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import OccupancyGrid
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
 
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.robot_info import RobotInfo
@@ -82,7 +85,6 @@ class Go2Observation(RobotObservation):
         cv_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
         # Undistort the image
         frame = self.image_receover.process(cv_image)
-        # Convert to PIL Image and store it
         self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
     def _tf_callback(self, msg: TFMessage):
@@ -169,6 +171,12 @@ class Go2Posture(Enum):
             return Go2Posture.MOVING
         else:
             raise ValueError(f"Unknown posture: {s}")
+        
+class Go2StateEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Go2Posture):
+            return obj.value
+        return super().default(obj)
 
 class Go2Wrapper(RobotWrapper):
     def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
@@ -178,8 +186,11 @@ class Go2Wrapper(RobotWrapper):
         self.state = {
             "posture": Go2Posture.STANDING,
             "x": 0.0, "y": 0.0,
-            "yaw": 0.0,
+            "yaw": 0,
         }
+
+        self.execution_queue = queue.Queue()
+        self.current_action = "idle()"
 
         extra = self.robot_info.extra
         if "url" not in extra:
@@ -193,6 +204,7 @@ class Go2Wrapper(RobotWrapper):
 
         self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
         self.ll_skillset.add_low_level_skill("lying_down", lambda: self._action('stand_down'), "Stand down")
+        self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in cm", args=[SkillArg("x", float), SkillArg("y", float)])
 
         high_level_skills = [
             {
@@ -211,7 +223,7 @@ class Go2Wrapper(RobotWrapper):
                 "description": "Rotate to align with object $1",
             },
             {
-                "name": "goto",
+                "name": "goto_object",
                 "definition": "?orienting($1){move(80, 0)}",
                 "description": "Move to object $1 in the view"
             }
@@ -231,6 +243,8 @@ class Go2Wrapper(RobotWrapper):
             self._cmd_vel_callback,
             10
         )
+
+        self.navigate_client = ActionClient(self.node, NavigateToPose, 'navigate_to_pose')
 
     def _cmd_vel_callback(self, msg: Twist):
         if msg.linear.x == 0.0 and msg.linear.y == 0.0 and msg.angular.z == 0.0:
@@ -260,10 +274,14 @@ class Go2Wrapper(RobotWrapper):
 
     @overrides
     def get_state(self) -> str:
-        self.state["x"] = self.observation.position[0]
-        self.state["y"] = self.observation.position[1]
-        self.state["yaw"] = self.observation.orientation[2] * 180.0 / math.pi
-        return json.dumps(self.state)
+        state_str = ""
+        self.state["x"] = round(self.observation.position[0], 2)
+        self.state["y"] = round(self.observation.position[1], 2)
+        self.state["yaw"] = int(self.observation.orientation[2] * 180.0 / math.pi)
+        state_str += "State: " + json.dumps(self.state, cls=Go2StateEncoder) + "\n"
+        state_str += "Current action: " + self.current_action + "\n"
+        state_str += self.memory.get()
+        return state_str
 
     def _action(self, action: str):
         control = {
@@ -331,4 +349,71 @@ class Go2Wrapper(RobotWrapper):
         self._move(angular_z=math.radians(deg), duration=5.0)
         self.state["posture"] = Go2Posture.STANDING
         return True
-        
+    
+    def goto(self, x: float, y: float, timeout_sec: float = 30.0) -> bool:
+        """
+        Moves the robot to the specified (x, y) position using Nav2 with timeout handling,
+        while letting background rclpy.spin handle subscription and actions.
+        """
+        print(f"-> Go to ({x}, {y}) cm")
+        self.state["posture"] = Go2Posture.MOVING
+        x_m = x / 100.0
+        y_m = y / 100.0
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = x_m
+        goal_msg.pose.pose.position.y = y_m
+        goal_msg.pose.pose.orientation.z = 0.0
+        goal_msg.pose.pose.orientation.w = 1.0
+
+        self.navigate_client.wait_for_server()
+        done_event = threading.Event()
+        result_status = {"status": None}  # Will be updated from callback
+
+        def result_callback(future):
+            result = future.result()
+            status = goal_handle.status
+            if status == 3:
+                print_t("Navigation: Goal succeeded")
+                result_status["status"] = True
+            elif status == 4:
+                print_t("Navigation: Goal aborted")
+                result_status["status"] = False
+            elif status == 5:
+                print_t("Navigation: Goal canceled")
+                result_status["status"] = False
+            else:
+                print_t(f"Navigation: Goal ended with status {status}")
+                result_status["status"] = False
+            done_event.set()
+
+        send_goal_future = self.navigate_client.send_goal_async(goal_msg)
+        send_goal_future.add_done_callback(
+            lambda f: self._handle_goal_response(f, result_callback, done_event, result_status, timeout_sec)
+        )
+
+        # Wait until result is ready or timeout
+        completed_in_time = done_event.wait(timeout=timeout_sec)
+        if not completed_in_time:
+            print_t("Navigation: Timeout reached. Cancelling goal...")
+            goal_handle = send_goal_future.result()
+            goal_handle.cancel_goal_async()
+            self.state["posture"] = Go2Posture.STANDING
+            return False
+
+        self.state["posture"] = Go2Posture.STANDING
+        return result_status["status"]
+
+    def _handle_goal_response(self, send_goal_future, result_callback, done_event, result_status, timeout_sec):
+        goal_handle = send_goal_future.result()
+        if not goal_handle.accepted:
+            print_t("Navigation: Goal rejected")
+            result_status["status"] = False
+            done_event.set()
+            return
+
+        print_t("Navigation: Goal accepted")
+        goal_handle.get_result_async().add_done_callback(result_callback)
+            
