@@ -37,12 +37,7 @@ def generate_launch_description():
             name='slam_toolbox',
             output='screen',
             parameters=[
-                {'use_sim_time': False},
-                {'odom_frame': 'odom'},
-                {'base_frame': 'base_link'},
-                {'map_frame': 'map'},
-                {'async_mode': True},
-                {'map_update_interval': 0.5},
+                slam_config_path,
             ],
             remappings=[
                 ('/scan', '/scan')

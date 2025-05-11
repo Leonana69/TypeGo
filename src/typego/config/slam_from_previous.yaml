@@ -1,0 +1,11 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    odom_frame: odom
+    base_frame: base_link
+    map_frame: map
+    async_mode: true
+    map_update_interval: 0.5
+    mode: mapping
+    map_file_name: /home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/yecl-lab
+    map_start_pose: [0.5, 0.3, 0.0]
