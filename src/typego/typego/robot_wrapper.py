@@ -45,7 +45,7 @@ class RobotMemory:
         for item in self.data:
             start = time.strftime("%H:%M:%S", time.localtime(item.start))
             js = {
-                "start": start,
+                "time": start,
                 "action": item.action,
                 "result": item.result
             }
