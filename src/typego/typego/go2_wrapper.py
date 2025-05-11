@@ -20,6 +20,7 @@ from rclpy.action import ActionClient
 
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.robot_info import RobotInfo
+from typego.minispec_interpreter import MiniSpecProgram
 from typego.yolo_client import YoloClient
 from typego.skillset import SkillSet, SkillArg, SkillSetLevel
 from typego.utils import quaternion_to_rpy, print_t, ImageRecover
@@ -183,6 +184,7 @@ class Go2Wrapper(RobotWrapper):
         self.init_ros_node()
         super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node), system_skill_func)
 
+        self.running = True
         self.state = {
             "posture": Go2Posture.STANDING,
             "x": 0.0, "y": 0.0,
@@ -190,7 +192,6 @@ class Go2Wrapper(RobotWrapper):
         }
 
         self.execution_queue = queue.Queue()
-        self.current_action = "idle()"
 
         extra = self.robot_info.extra
         if "url" not in extra:
@@ -204,7 +205,7 @@ class Go2Wrapper(RobotWrapper):
 
         self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
         self.ll_skillset.add_low_level_skill("lying_down", lambda: self._action('stand_down'), "Stand down")
-        self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in cm", args=[SkillArg("x", float), SkillArg("y", float)])
+        self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in m", args=[SkillArg("x", float), SkillArg("y", float)])
 
         high_level_skills = [
             {
@@ -219,19 +220,22 @@ class Go2Wrapper(RobotWrapper):
             },
             {
                 "name": "orienting",
-                "definition": "{_1=ox($1);rotate((0.5-_1)*80)}",
+                "definition": "{_1=object_x($1);rotate((0.5-_1)*80)}",
                 "description": "Rotate to align with object $1",
             },
             {
-                "name": "goto_object",
-                "definition": "?orienting($1){move(80, 0)}",
-                "description": "Move to object $1 in the view"
+                "name": "goto",
+                "definition": "2{orienting($1);_1=object_distance($1)/2;{move(_1, 0)}}",
+                "description": "Move to object $1 in the view (orienting then go forward)"
             }
         ]
 
         self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
         for skill in high_level_skills:
             self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
+
+        self.execution_thread = threading.Thread(target=self.worker)
+        self.execution_thread.start()
 
     def init_ros_node(self):
         rclpy.init()
@@ -258,6 +262,22 @@ class Go2Wrapper(RobotWrapper):
 
         self._send_control(control)
 
+    def append_action(self, action: str):
+        """
+        Appends an action to the execution queue.
+        """
+        self.execution_queue.put(action)
+
+    def worker(self):
+        while self.running:
+            if not self.execution_queue.empty():
+                action = self.execution_queue.get()
+                print_t(f"[Go2] Executing action: {action}")
+                prog = MiniSpecProgram(self, None)
+                prog.parse(action)
+                prog.eval()
+            time.sleep(0.1)
+
     @overrides
     def start(self) -> bool:
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
@@ -267,6 +287,8 @@ class Go2Wrapper(RobotWrapper):
 
     @overrides
     def stop(self):
+        self.running = False
+        self.execution_thread.join()
         self.observation.stop()
         if self.spin_thread is not None:
             rclpy.shutdown()
@@ -279,8 +301,7 @@ class Go2Wrapper(RobotWrapper):
         self.state["y"] = round(self.observation.position[1], 2)
         self.state["yaw"] = int(self.observation.orientation[2] * 180.0 / math.pi)
         state_str += "State: " + json.dumps(self.state, cls=Go2StateEncoder) + "\n"
-        state_str += "Current action: " + self.current_action + "\n"
-        state_str += self.memory.get()
+        state_str += self.memory.get_str()
         return state_str
 
     def _action(self, action: str):
@@ -328,14 +349,9 @@ class Go2Wrapper(RobotWrapper):
         """
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
-        print(f"-> Move by ({dx}, {dy}) cm")
+        print(f"-> Move by ({dx}, {dy}) m")
         self.state["posture"] = Go2Posture.MOVING
-        # Convert distances from cm to meters
-        dx_m = dx / 100.0
-        dy_m = dy / 100.0
-
-        # Perform the movement
-        self._move(linear_x=dx_m, linear_y=dy_m, duration=5.0)
+        self._move(linear_x=dx, linear_y=dy, duration=5.0)
         self.state["posture"] = Go2Posture.STANDING
         return True
 
@@ -355,16 +371,14 @@ class Go2Wrapper(RobotWrapper):
         Moves the robot to the specified (x, y) position using Nav2 with timeout handling,
         while letting background rclpy.spin handle subscription and actions.
         """
-        print(f"-> Go to ({x}, {y}) cm")
+        print(f"-> Go to ({x}, {y}) m")
         self.state["posture"] = Go2Posture.MOVING
-        x_m = x / 100.0
-        y_m = y / 100.0
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = 'map'
         goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = x_m
-        goal_msg.pose.pose.position.y = y_m
+        goal_msg.pose.pose.position.x = x
+        goal_msg.pose.pose.position.y = y
         goal_msg.pose.pose.orientation.z = 0.0
         goal_msg.pose.pose.orientation.w = 1.0
 

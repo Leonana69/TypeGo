@@ -53,9 +53,7 @@ class LLMPlanner():
                                             robot_state=self.robot.get_state(),
                                             scene_description=self.robot.get_obj_list_str() + "\n")
 
-        # return self.llm.request(prompt, self.model_type, stream=False)
-        print_t(f"[P] Execution request: {prompt}")
-        return ""
+        return self.llm.request(prompt, self.model_type, stream=False)
 
     # def plan(self, user_instruction: str):
     #     robot_skills = ""

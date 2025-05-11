@@ -23,9 +23,13 @@ def generate_povs():
     
     html_content = "<h2>Robot POVs</h2><div style='display: flex; gap: 10px;'>"
     html_content += f"""
-    <div>
-        <img src="http://localhost:50000/robot-pov/" alt=robot-pov" 
-                style="border-radius: 10px; object-fit: contain; width: 1;">
+    <div style="flex: 0 0 70%;">
+        <img src="http://localhost:50000/robot-pov/" alt="robot-pov" 
+             style="border-radius: 10px; object-fit: contain; width: 100%;">
+    </div>
+    <div style="flex: 0 0 30%;">
+        <img src="http://localhost:50000/robot-map/" alt="robot-map" 
+             style="border-radius: 10px; object-fit: contain; width: 100%;">
     </div>
     """
     html_content += "</div>"
@@ -83,12 +87,16 @@ class TypeFly:
                         complete_response += msg + '\n'
                 yield gr.ChatMessage(role="assistant", content=complete_response)
 
-    def generate_mjpeg_stream(self):
+    def generate_mjpeg_stream(self, source: str):
         while True:
             if not self.running:
                 break
                 
-            frame = self.llm_controller.fetch_robot_observation(True)
+            if source == 'pov':
+                frame = self.llm_controller.fetch_robot_pov()
+            elif source == 'map':
+                frame = self.llm_controller.fetch_robot_map()
+            
             if frame is None:
                 time.sleep(1.0 / 30.0)
                 continue
@@ -107,10 +115,16 @@ class TypeFly:
         # Start the Flask server for video feed
         app = Flask(__name__)
         @app.route('/robot-pov/')
-        def video_feed():
-            """Route to get video feed for a specific robot."""
+        def video_feed_pov():
             return Response(
-                self.generate_mjpeg_stream(), 
+                self.generate_mjpeg_stream('pov'), 
+                mimetype='multipart/x-mixed-replace; boundary=frame'
+            )
+        
+        @app.route('/robot-map/')
+        def video_feed_map():
+            return Response(
+                self.generate_mjpeg_stream('map'), 
                 mimetype='multipart/x-mixed-replace; boundary=frame'
             )
         flask_thread = Thread(target=app.run, kwargs={'host': 'localhost', 'port': 50000, 'debug': True, 'use_reloader': False})

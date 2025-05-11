@@ -125,3 +125,26 @@ Objects: {
 ## OUTPUT
 keep()
 ```
+
+
+# EXAMPLE 7
+```
+## SYSTEM1 INSTRUCTION
+Get closer to the person.
+
+## ROBOT STATE
+State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
+Current action: "idle()"
+History: [
+    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
+    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+]
+
+## SCENE DESCRIPTION
+Objects: {
+    "person": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 1.22}
+}
+
+## OUTPUT
+move(0.60, 0.0)
+```

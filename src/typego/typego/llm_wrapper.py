@@ -6,8 +6,7 @@ class ModelType(Enum):
     GPT4 = "gpt-4"
     GPT4O = "gpt-4o"
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-CHAT_LOG_FILE = os.path.join(CURRENT_DIR, "assets/chat_log.txt")
+CHAT_LOG_FILE = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/chat_log.txt"
 
 class LLMWrapper:
     def __init__(self, temperature: float=0.0):

@@ -31,8 +31,6 @@ class LLMController():
             self.robot = Go2Wrapper(robot_info, self.controller_func)
         
         self.planner.set_robot(self.robot)
-        self.current_plan = None
-        self.execution_history = None
 
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
@@ -60,17 +58,23 @@ class LLMController():
         self.running = False
         self.robot.stop()
 
-    def fetch_robot_observation(self, overlay: bool=False) -> Optional[Image.Image]:
+    def fetch_robot_pov(self) -> Optional[Image.Image]:
         obs = self.robot.observation
         if not obs or not obs.image_process_result:
             return None
 
         image, yolo_results = obs.image_process_result
-        if overlay:
-            image = YoloClient.plot_results_ps(image.copy(), yolo_results)
-            image = slam_map_overlay(image, obs.slam_map.get_map())
+        image = YoloClient.plot_results_ps(image.copy(), yolo_results)
 
         return image
+    
+    def fetch_robot_map(self) -> Optional[Image.Image]:
+        obs = self.robot.observation
+        if not obs or not obs.slam_map:
+            return None
+
+        image = obs.slam_map.get_map()
+        return Image.fromarray(image)
     
     def continous_plan(self, rate: int = 2):
         print_t(f"[C] Starting continuous planning...")
@@ -85,15 +89,11 @@ class LLMController():
         # self._send_message('[TASK]: ' + instruction)
         self._send_message('Planning...')
         t1 = time.time()
-        self.current_plan = self.planner.plan(instruction)
+        current_plan = self.planner.plan(instruction)
         t2 = time.time()
         print_t(f"[C] Planning time: {t2 - t1:.2f}s")
-        try:
-            self.execute_minispec(self.current_plan)
-        except Exception as e:
-            print_t(f"[C] Error: {e}")
+        print_t(f"[C] Plan: {current_plan}")
+        self.robot.append_action(current_plan)
         
         self._send_message(f'\n[Task ended]')
         self._send_message('end')
-        self.current_plan = None
-        self.execution_history = None

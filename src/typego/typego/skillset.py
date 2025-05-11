@@ -79,7 +79,7 @@ class SkillSet():
     @staticmethod
     def get_common_skillset(movement_skills: list[callable], vision_skills: list[callable], other_skills: list[callable]) -> 'SkillSet':
         skillset = SkillSet(level=SkillSetLevel.LOW)
-        skillset.add_low_level_skill("move", movement_skills[0], "Move by (dx, dy) cm distance (dx: +forward/-backward, dy: +left/-right)", args=[SkillArg("dx", float), SkillArg("dy", float)])
+        skillset.add_low_level_skill("move", movement_skills[0], "Move by (dx, dy) m distance (dx: +forward/-backward, dy: +left/-right)", args=[SkillArg("dx", float), SkillArg("dy", float)])
         skillset.add_low_level_skill("rotate", movement_skills[1], "Rotate by a certain degree (deg: +left/-right)", args=[SkillArg("deg", float)])
 
         skillset.add_low_level_skill("is_visible", vision_skills[0], "Check if object is visible", args=[SkillArg("obj", str)])
@@ -87,7 +87,8 @@ class SkillSet():
         skillset.add_low_level_skill("object_y", vision_skills[2], "Get object's y position (0-1)", args=[SkillArg("obj", str)])
         skillset.add_low_level_skill("object_width", vision_skills[3], "Get object's width (0-1)", args=[SkillArg("obj", str)])
         skillset.add_low_level_skill("object_height", vision_skills[4], "Get object's height (0-1)", args=[SkillArg("obj", str)])
-        skillset.add_low_level_skill("take_picture", vision_skills[5], "Take a picture")
+        skillset.add_low_level_skill("object_distance", vision_skills[5], "Get object's distance (m)", args=[SkillArg("obj", str)])
+        skillset.add_low_level_skill("take_picture", vision_skills[6], "Take a picture")
 
         skillset.add_low_level_skill("log", other_skills[0], "Print text to user", args=[SkillArg("text", str)])
         skillset.add_low_level_skill("delay", other_skills[1], "Wait for seconds", args=[SkillArg("sec", float)])

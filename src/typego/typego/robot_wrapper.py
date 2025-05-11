@@ -27,11 +27,18 @@ class RobotMemory:
     def __init__(self, robot_info: RobotInfo):
         self.robot_info = robot_info
         self.data: list[MemoryItem] = []
+        self.current_action: Optional[str] = None
+
+    def set_idle(self):
+        self.current_action = 'idle()'
+
+    def set_action(self, action: str):
+        self.current_action = action
 
     def add(self, action: str, result: bool):
         self.data.append(MemoryItem(time.time(), action, "success" if result else "failed"))
 
-    def get(self) -> str:
+    def get_str(self) -> str:
         current_time = time.time()
         self.data = [item for item in self.data if current_time - item.start < 60]
         rslt = ""
@@ -44,7 +51,7 @@ class RobotMemory:
             }
             rslt += f"{js}\n"
 
-        return f"History: [{rslt}]"
+        return f"Current action: {self.current_action}\nHistory: [{rslt}]"
 
 class SLAMMap:
     def __init__(self):
@@ -233,6 +240,7 @@ class RobotWrapper(ABC):
             self.object_y,
             self.object_width,
             self.object_height,
+            self.object_distance,
             self.take_picture
         ]
 
@@ -320,6 +328,9 @@ class RobotWrapper(ABC):
     
     def object_height(self, object_name: str) -> float | str:
         return self._get_object_attribute(object_name, 'h')
+    
+    def object_distance(self, object_name: str) -> float | str:
+        return self._get_object_attribute(object_name, 'depth')
     
     def take_picture(self) -> bool:
         return self._user_log(self.observation.image)
