@@ -6,12 +6,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 import os
 
 # Package path
-pkg_typego = get_package_share_directory('typego')
+pkg_typego_sdk = get_package_share_directory('typego_sdk')
 print(get_package_share_directory('nav2_bringup'))
 
 def generate_launch_description():
     nav2_config = os.path.join(
-        pkg_typego,
+        pkg_typego_sdk,
         'config',
         'nav2_params.yaml'
     )

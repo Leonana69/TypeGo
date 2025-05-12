@@ -10,6 +10,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(tf2 REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -34,9 +38,29 @@ ament_target_dependencies(gstreamer_receiver_node rclcpp sensor_msgs)
 target_include_directories(gstreamer_receiver_node PRIVATE ${GST_INCLUDE_DIRS})
 target_link_libraries(gstreamer_receiver_node ${GST_LIBRARIES})
 
+add_executable(waypoints_node src/waypoints.cpp)
+ament_target_dependencies(waypoints_node rclcpp geometry_msgs tf2 tf2_ros nav_msgs visualization_msgs)
+
 install(TARGETS
   livox_udp_receiver_node
   gstreamer_receiver_node
+  waypoints_node
   DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+install(DIRECTORY resource
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+install(DIRECTORY rviz_config
+  DESTINATION share/${PROJECT_NAME}/
+)
 
 ament_package()

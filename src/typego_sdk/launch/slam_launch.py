@@ -6,7 +6,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 
 # Package path
-pkg_typego = get_package_share_directory('typego')
+pkg_typego_sdk = get_package_share_directory('typego_sdk')
 
 # Declare launch arguments
 ARGUMENTS = [
@@ -27,8 +27,8 @@ def generate_launch_description():
     slam_params_file = LaunchConfiguration('slam_params_file')
     rviz = LaunchConfiguration('rviz')
 
-    slam_config_path = PathJoinSubstitution([pkg_typego, 'config', slam_params_file])
-    rviz_config_path = PathJoinSubstitution([pkg_typego, 'rviz_cfgs', 'slam.rviz'])
+    slam_config_path = PathJoinSubstitution([pkg_typego_sdk, 'config', slam_params_file])
+    rviz_config_path = PathJoinSubstitution([pkg_typego_sdk, 'rviz_config', 'slam.rviz'])
 
     return LaunchDescription(ARGUMENTS + [
         Node(
