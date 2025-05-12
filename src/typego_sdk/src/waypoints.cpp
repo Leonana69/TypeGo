@@ -8,6 +8,7 @@
 #include <cmath>
 #include <queue>
 #include <unordered_set>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 struct Waypoint {
     double x;
@@ -57,8 +58,9 @@ public:
             "/map", 10, std::bind(&AdaptiveWaypointNode::map_callback, this, std::placeholders::_1));
         timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&AdaptiveWaypointNode::on_timer, this));
         waypoint_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoints", 10);
-
-        load_waypoints("waypoints.csv");
+        std::string path = ament_index_cpp::get_package_share_directory("typego_sdk");
+        std::string waypoint_file = path + "/resource/waypoints.csv";
+        load_waypoints(waypoint_file);
     }
 
 private:
@@ -69,7 +71,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     nav_msgs::msg::OccupancyGrid::SharedPtr latest_map_;
     std::vector<Waypoint> waypoints_;
-    const double threshold_distance_meters_ = 2.0;
+    const double threshold_distance_meters_ = 3.0;
 
     void load_waypoints(const std::string &file) {
         std::ifstream f(file);
