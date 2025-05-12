@@ -85,6 +85,8 @@ class SLAMMap:
         map_image = self.map_data.copy()
         cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
         cv2.arrowedLine(map_image, (u, v), (int(u + 10 * np.cos(self.robot_yaw)), int(v - 10 * np.sin(self.robot_yaw))), (255, 0, 0), 1)
+        
+        map_image = cv2.resize(map_image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
         return map_image
 
 class RobotObservation(ABC):
