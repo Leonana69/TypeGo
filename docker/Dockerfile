@@ -32,6 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # install gstreamer
 RUN apt-get update && apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
 
+# install slam_toolbox
+RUN apt-get update && apt-get install -y ros-humble-slam-toolbox
+
+# install nav2
+RUN apt-get update && apt-get install -y ros-humble-navigation2 ros-humble-nav2-bringup
+
 # source the setup files
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> /root/.bashrc
 
@@ -39,4 +45,5 @@ COPY ../src /workspace/src
 WORKDIR /workspace
 
 RUN /bin/bash -c "source /opt/ros/$ROS_DISTRO/setup.bash && cd /workspace && colcon build"
-CMD ["bash", "-c", "source /workspace/install/setup.bash && ros2 run typego_sdk livox_udp_receiver_node & source /workspace/install/setup.bash && ros2 run typego_sdk gstreamer_receiver_node"]
+RUN chmod +x /workspace/src/typego_sdk/scripts/run.sh
+CMD ["bash", "-c", "/workspace/src/typego_sdk/scripts/run.sh"]

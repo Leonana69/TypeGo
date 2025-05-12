@@ -17,6 +17,7 @@ from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
+from action_msgs.msg import GoalStatus
 
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.robot_info import RobotInfo
@@ -367,10 +368,6 @@ class Go2Wrapper(RobotWrapper):
         return True
     
     def goto(self, x: float, y: float, timeout_sec: float = 30.0) -> bool:
-        """
-        Moves the robot to the specified (x, y) position using Nav2 with timeout handling,
-        while letting background rclpy.spin handle subscription and actions.
-        """
         print(f"-> Go to ({x}, {y}) m")
         self.state["posture"] = Go2Posture.MOVING
 
@@ -383,51 +380,46 @@ class Go2Wrapper(RobotWrapper):
         goal_msg.pose.pose.orientation.w = 1.0
 
         self.navigate_client.wait_for_server()
-        done_event = threading.Event()
-        result_status = {"status": None}  # Will be updated from callback
 
-        def result_callback(future):
-            result = future.result()
-            status = goal_handle.status
-            if status == 3:
-                print_t("Navigation: Goal succeeded")
-                result_status["status"] = True
-            elif status == 4:
-                print_t("Navigation: Goal aborted")
+        done_event = threading.Event()
+        result_status = {"status": None}
+        goal_handle_container = {}
+
+        def goal_response_callback(future):
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                print_t("Navigation: Goal rejected")
                 result_status["status"] = False
-            elif status == 5:
-                print_t("Navigation: Goal canceled")
-                result_status["status"] = False
-            else:
-                print_t(f"Navigation: Goal ended with status {status}")
-                result_status["status"] = False
-            done_event.set()
+                done_event.set()
+                return
+
+            goal_handle_container["handle"] = goal_handle  # Save for timeout/cancel
+            result_future = goal_handle.get_result_async()
+
+            def result_callback(result_future):
+                result = result_future.result()
+                goal_id = goal_handle.goal_id
+                if result.status == GoalStatus.STATUS_SUCCEEDED:  # Use enum for clarity
+                    print_t("Navigation: Goal succeeded")
+                    result_status["status"] = True
+                else:
+                    print_t(f"Navigation: Goal failed with status {result.status}")
+                    result_status["status"] = False
+                done_event.set()
+
+            result_future.add_done_callback(result_callback)
 
         send_goal_future = self.navigate_client.send_goal_async(goal_msg)
-        send_goal_future.add_done_callback(
-            lambda f: self._handle_goal_response(f, result_callback, done_event, result_status, timeout_sec)
-        )
+        send_goal_future.add_done_callback(goal_response_callback)
 
-        # Wait until result is ready or timeout
         completed_in_time = done_event.wait(timeout=timeout_sec)
         if not completed_in_time:
-            print_t("Navigation: Timeout reached. Cancelling goal...")
-            goal_handle = send_goal_future.result()
-            goal_handle.cancel_goal_async()
+            print_t("Navigation: Timeout — cancelling goal...")
+            goal_handle = goal_handle_container.get("handle")
+            if goal_handle and goal_handle.accepted:
+                goal_handle.cancel_goal_async()
             self.state["posture"] = Go2Posture.STANDING
             return False
 
         self.state["posture"] = Go2Posture.STANDING
         return result_status["status"]
-
-    def _handle_goal_response(self, send_goal_future, result_callback, done_event, result_status, timeout_sec):
-        goal_handle = send_goal_future.result()
-        if not goal_handle.accepted:
-            print_t("Navigation: Goal rejected")
-            result_status["status"] = False
-            done_event.set()
-            return
-
-        print_t("Navigation: Goal accepted")
-        goal_handle.get_result_async().add_done_callback(result_callback)
-            
