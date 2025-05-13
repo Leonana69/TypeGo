@@ -131,7 +131,7 @@ class YoloClient():
             await self.frame_queue.put((self.frame_id, image))
             
             config = {
-                'robot_info': self.robot_info.to_json(),
+                'robot_info': self.robot_info.robot_id,
                 'service_type': 'yolo3d',
                 'tracking_mode': False,
                 'image_id': self.frame_id,

@@ -2,3 +2,7 @@ build/
 install/
 log/
 test/
+
+__pycache__/
+chat_log.txt
+*.pt

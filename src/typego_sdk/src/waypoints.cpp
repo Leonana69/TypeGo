@@ -16,38 +16,42 @@ struct Waypoint {
 };
 
 int grid_distance(const nav_msgs::msg::OccupancyGrid &grid, int sx, int sy, int gx, int gy) {
-    if (sx == gx && sy == gy) return 0;
+    if (sx == gx && sy == gy) return 0;  // Same cell.
 
     const int width = grid.info.width;
     const int height = grid.info.height;
     const auto &data = grid.data;
 
     auto index = [&](int x, int y) { return y * width + x; };
-    if (sx < 0 || sy < 0 || gx < 0 || gy < 0 || sx >= width || sy >= height || gx >= width || gy >= height)
-        return -1;
-    if (data[index(sx, sy)] > 50 || data[index(gx, gy)] > 50)
-        return -1; // blocked
 
+    // Check bounds.
+    if (sx < 0 || sx >= width || sy < 0 || sy >= height) return -1;  // Start invalid.
+    if (gx < 0 || gx >= width || gy < 0 || gy >= height) return -1;  // Goal invalid.
+
+    // Check if start or goal is blocked (assuming >50 is occupied).
+    if (data[index(sx, sy)] > 50 || data[index(gx, gy)] > 50) return -1;
+
+    // BFS setup.
     std::queue<std::pair<int, int>> q;
     std::vector<std::vector<int>> dist(height, std::vector<int>(width, -1));
     q.push({sx, sy});
     dist[sy][sx] = 0;
 
-    const int dx[] = {1, -1, 0, 0};
-    const int dy[] = {0, 0, 1, -1};
+    constexpr int dx[] = {1, -1, 0, 0};
+    constexpr int dy[] = {0, 0, 1, -1};
 
     while (!q.empty()) {
         auto [x, y] = q.front(); q.pop();
         for (int i = 0; i < 4; ++i) {
             int nx = x + dx[i], ny = y + dy[i];
-            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-            if (data[index(nx, ny)] > 50 || dist[ny][nx] != -1) continue;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;  // Out of bounds.
+            if (data[index(nx, ny)] > 50 || dist[ny][nx] != -1) continue;   // Blocked or visited.
             dist[ny][nx] = dist[y][x] + 1;
-            if (nx == gx && ny == gy) return dist[ny][nx];
+            if (nx == gx && ny == gy) return dist[ny][nx];  // Found goal.
             q.push({nx, ny});
         }
     }
-    return -1;
+    return -1;  // Goal unreachable.
 }
 
 class AdaptiveWaypointNode : public rclcpp::Node {
@@ -56,11 +60,9 @@ public:
         : Node("adaptive_waypoint_node"), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_) {
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/map", 10, std::bind(&AdaptiveWaypointNode::map_callback, this, std::placeholders::_1));
-        timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&AdaptiveWaypointNode::on_timer, this));
+        timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&AdaptiveWaypointNode::on_timer, this));
         waypoint_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoints", 10);
-        std::string path = ament_index_cpp::get_package_share_directory("typego_sdk");
-        std::string waypoint_file = path + "/resource/waypoints.csv";
-        load_waypoints(waypoint_file);
+        load_waypoints(waypoint_file_);
     }
 
 private:
@@ -71,7 +73,23 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     nav_msgs::msg::OccupancyGrid::SharedPtr latest_map_;
     std::vector<Waypoint> waypoints_;
+    std::string waypoint_file_ = getWaypointFilePath();
     const double threshold_distance_meters_ = 3.0;
+
+    std::string getWaypointFilePath() {
+        const char* resource_dir = std::getenv("RESOURCE_DIR");
+
+        std::string resource_path;
+        if (resource_dir == nullptr) {
+            // Use default path if RESOURCE_DIR is not set
+            resource_path = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource";
+            std::cout << "[INFO] RESOURCE_DIR not set. Using default: " << resource_path << std::endl;
+        } else {
+            resource_path = resource_dir;
+        }
+
+        return resource_path + "/waypoints.csv";
+    }
 
     void load_waypoints(const std::string &file) {
         std::ifstream f(file);
@@ -101,6 +119,7 @@ private:
 
         double x = tf.transform.translation.x;
         double y = tf.transform.translation.y;
+
         auto grid = *latest_map_;
 
         int robot_cx = (x - grid.info.origin.position.x) / grid.info.resolution;
@@ -108,8 +127,14 @@ private:
 
         double min_dist = std::numeric_limits<double>::max();
         for (auto &wp : waypoints_) {
+            // skip if the absolute distance is greater than threshold
+            if ((x - wp.x) * (x - wp.x) + (y - wp.y) * (y - wp.y) > threshold_distance_meters_ * threshold_distance_meters_) {
+                continue;
+            }
+
             int wp_cx = (wp.x - grid.info.origin.position.x) / grid.info.resolution;
             int wp_cy = (wp.y - grid.info.origin.position.y) / grid.info.resolution;
+
             int dist = grid_distance(grid, robot_cx, robot_cy, wp_cx, wp_cy);
             if (dist >= 0) {
                 double meters = dist * grid.info.resolution;
@@ -120,7 +145,7 @@ private:
         if (min_dist > threshold_distance_meters_) {
             RCLCPP_INFO(this->get_logger(), "Adding new waypoint at (%.2f, %.2f)", x, y);
             waypoints_.push_back({x, y});
-            save_waypoints("waypoints.csv");
+            save_waypoints(waypoint_file_);
         }
 
         publish_waypoints();
