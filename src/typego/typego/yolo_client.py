@@ -125,52 +125,55 @@ class YoloClient():
             print_t(f"[Y] Timeout error when connecting to {service_url}")
 
     async def detect(self, image: Image.Image, conf=0.3):
+        # Prepare image and config while not holding the lock
+        import time
+        t1 = time.time()
+        config = {
+            'robot_info': self.robot_info.robot_id,
+            'service_type': 'yolo3d',
+            'tracking_mode': False,
+            'image_id': self.frame_id + 1,  # We'll increment after
+            'conf': conf
+        }
+        image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
+        
         async with self.frame_queue_lock:
             self.frame_id += 1
-            # print_t(f"[Y] Sending request with image id: {self.frame_id} {self.frame_queue.qsize()}")
+            config['image_id'] = self.frame_id  # Update with actual frame_id
             await self.frame_queue.put((self.frame_id, image))
             
-            config = {
-                'robot_info': self.robot_info.robot_id,
-                'service_type': 'yolo3d',
-                'tracking_mode': False,
-                'image_id': self.frame_id,
-                'conf': conf
-            }
             form_data = aiohttp.FormData()
-            image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
             form_data.add_field('image', image_bytes, filename='frame.webp', content_type='image/webp')
             form_data.add_field('json_data', json.dumps(config), content_type='application/json')
 
-        async with YoloClient.get_aiohttp_session_response(self.service_url, form_data) as response:
-            data = await response.text()
-
         try:
-            json_results = json.loads(data)
-        except:
+            async with YoloClient.get_aiohttp_session_response(self.service_url, form_data) as response:
+                data = await response.text()
+                json_results = json.loads(data)
+        except json.JSONDecodeError:
             print_t(f"[Y] Invalid json results: {data}")
             return
-        
+        except Exception as e:
+            print_t(f"[Y] Request failed: {str(e)}")
+            return
+
         if 'image_id' not in json_results:
             print_t(f"[Y] Missing image_id in results: {json_results}")
             return
-        
+            
         # Safe queue processing
         result_image_id = json_results['image_id']
-        # print_t(f"[Y] Received results for image id: {result_image_id} {self.frame_queue.qsize()}")
         async with self.frame_queue_lock:
-            # Discard frames older than our result
+            # Process queue until we find our frame or a newer one
             while not self.frame_queue.empty():
                 head_frame = await self.frame_queue.get()
                 if head_frame[0] == result_image_id:
-                    matched_frame = head_frame
+                    # Update latest result without holding the queue lock
+                    with self._latest_result_lock:
+                        self._latest_result = (image, self.cc_to_ps(json_results["result"]))
                     break
                 elif head_frame[0] > result_image_id:
                     print_t(f"[Y] Discarded old result: {head_frame[0]}")
                     return
                 else:
                     print_t(f"[Y] Discarded old frame: {head_frame[0]}")
-
-        # Update latest result
-        with self._latest_result_lock:
-            self._latest_result = (image, self.cc_to_ps(json_results["result"]))

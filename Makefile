@@ -1,6 +1,4 @@
-.PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build, run, build
-
-GPU_OPTIONS=--gpus all
+.PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build, build
 
 build:
 	colcon build
