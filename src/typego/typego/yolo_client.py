@@ -48,14 +48,14 @@ class YoloClient():
         self.service_url = 'http://{}:{}/process'.format(EDGE_SERVICE_IP, EDGE_SERVICE_PORT)
         self.target_image_size = (640, 360)
         self._latest_result_lock = threading.Lock()
-        self._latest_result = (None, [])
+        self._latest_result = None
         self.frame_id = 0
         self.frame_queue = asyncio.Queue() # queue element: (frame_id, frame)
         self.frame_queue_lock = asyncio.Lock()
         print_t(f"[Y] YoloClient initialized with service url: {self.service_url}")
 
     @property
-    def latest_result(self) -> tuple[Image.Image, list]:
+    def latest_result(self) -> tuple[Image.Image, list] | None:
         with self._latest_result_lock:
             return self._latest_result
 

@@ -110,7 +110,7 @@ class RobotObservation(ABC):
         self._position_lock = threading.Lock()
         self._slam_map_lock = threading.Lock()
 
-        self._image_process_result: tuple[Image.Image, list[ObjectInfo]] = (None, [])
+        self._image_process_result: tuple[Image.Image, list[ObjectInfo]] | None = None
         self._image_process_lock = threading.Lock()
 
         self.running: bool = False
@@ -175,7 +175,7 @@ class RobotObservation(ABC):
             self._position = value
     
     @property
-    def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]]:
+    def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
         with self._image_process_lock:
             return self._image_process_result
         
