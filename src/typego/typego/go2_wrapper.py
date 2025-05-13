@@ -26,6 +26,8 @@ from typego.yolo_client import YoloClient
 from typego.skillset import SkillSet, SkillArg, SkillSetLevel
 from typego.utils import quaternion_to_rpy, print_t, ImageRecover
 
+from typego_interface.msg import WayPointArray
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 GO2_CAM_K = np.array([
@@ -79,6 +81,13 @@ class Go2Observation(RobotObservation):
             OccupancyGrid,
             '/map',
             self._map_callback,
+            10
+        )
+
+        node.create_subscription(
+            WayPointArray,
+            '/waypoints',
+            self._waypoint_callback,
             10
         )
 
@@ -141,6 +150,9 @@ class Go2Observation(RobotObservation):
         map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
         self.slam_map.update_map(map_data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
         # print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
+
+    def _waypoint_callback(self, msg: WayPointArray):
+        self.slam_map.update_waypoints(msg)
         
     @overrides
     def _start(self):

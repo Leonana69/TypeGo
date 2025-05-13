@@ -14,6 +14,8 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(CURL REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -38,8 +40,11 @@ ament_target_dependencies(gstreamer_receiver_node rclcpp sensor_msgs)
 target_include_directories(gstreamer_receiver_node PRIVATE ${GST_INCLUDE_DIRS})
 target_link_libraries(gstreamer_receiver_node ${GST_LIBRARIES})
 
+find_package(typego_interface REQUIRED)
 add_executable(waypoints_node src/waypoints.cpp)
-ament_target_dependencies(waypoints_node rclcpp geometry_msgs tf2 tf2_ros nav_msgs visualization_msgs)
+ament_target_dependencies(waypoints_node rclcpp geometry_msgs tf2 tf2_ros nav_msgs visualization_msgs typego_interface)
+
+target_link_libraries(waypoints_node ${OpenCV_LIBS} ${CURL_LIBRARIES})
 
 install(TARGETS
   livox_udp_receiver_node

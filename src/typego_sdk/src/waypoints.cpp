@@ -9,11 +9,33 @@
 #include <queue>
 #include <unordered_set>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <opencv2/opencv.hpp>
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
+#include <sensor_msgs/msg/image.hpp>
+
+#include "typego_interface/msg/way_point.hpp"
+#include "typego_interface/msg/way_point_array.hpp"
+
+static const char* labels[] = {
+    "hallway",
+    "room",
+    "free space"
+};
 
 struct Waypoint {
+    int id;
     double x;
     double y;
+    std::string label;
 };
+
+// Helper function for HTTP requests
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
+    size_t total_size = size * nmemb;
+    output->append((char*)contents, total_size);
+    return total_size;
+}
 
 int grid_distance(const nav_msgs::msg::OccupancyGrid &grid, int sx, int sy, int gx, int gy) {
     if (sx == gx && sy == gy) return 0;  // Same cell.
@@ -60,21 +82,34 @@ public:
         : Node("adaptive_waypoint_node"), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_) {
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/map", 10, std::bind(&AdaptiveWaypointNode::map_callback, this, std::placeholders::_1));
+        image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+            "/camera/image_raw", 10, std::bind(&AdaptiveWaypointNode::image_callback, this, std::placeholders::_1));
         timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&AdaptiveWaypointNode::on_timer, this));
-        waypoint_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoints", 10);
+        waypoint_pub_ = this->create_publisher<typego_interface::msg::WayPointArray>("/waypoints", 10);
+        waypoint_marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoint_markers", 10);
         load_waypoints(waypoint_file_);
+
+        const char* edge_service_ip = std::getenv("EDGE_SERVICE_IP");
+        edge_service_ip_ = edge_service_ip ? std::string(edge_service_ip) : "localhost";
     }
 
 private:
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr waypoint_pub_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+    rclcpp::Publisher<typego_interface::msg::WayPointArray>::SharedPtr waypoint_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr waypoint_marker_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
     nav_msgs::msg::OccupancyGrid::SharedPtr latest_map_;
+    sensor_msgs::msg::Image::SharedPtr latest_image_;
     std::vector<Waypoint> waypoints_;
     std::string waypoint_file_ = getWaypointFilePath();
+    std::string edge_service_ip_;
     const double threshold_distance_meters_ = 3.0;
+    std::mutex image_mutex_;
+
+    int next_id_ = 0;
 
     std::string getWaypointFilePath() {
         const char* resource_dir = std::getenv("RESOURCE_DIR");
@@ -93,17 +128,34 @@ private:
 
     void load_waypoints(const std::string &file) {
         std::ifstream f(file);
+        int id;
         double x, y;
-        while (f >> x >> y) waypoints_.push_back({x, y});
+        std::string label;
+        while (f >> id >> x >> y) {
+            std::getline(f, label);  // Read the rest of the line as label
+            // Trim leading whitespace from label
+            label.erase(0, label.find_first_not_of(" \t"));
+            waypoints_.push_back({id, x, y, label});
+        }
+        if (!waypoints_.empty()) {
+            next_id_ = waypoints_.back().id + 1;  // Increment ID for the next waypoint
+        }
     }
 
     void save_waypoints(const std::string &file) {
         std::ofstream f(file);
-        for (auto &wp : waypoints_) f << wp.x << " " << wp.y << "\n";
+        for (auto &wp : waypoints_) {
+            f << wp.id << " " << wp.x << " " << wp.y << " " << wp.label << "\n";
+        }
     }
 
     void map_callback(nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         latest_map_ = msg;
+    }
+
+    void image_callback(sensor_msgs::msg::Image::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(image_mutex_);
+        latest_image_ = msg;
     }
 
     void on_timer() {
@@ -144,15 +196,124 @@ private:
 
         if (min_dist > threshold_distance_meters_) {
             RCLCPP_INFO(this->get_logger(), "Adding new waypoint at (%.2f, %.2f)", x, y);
-            waypoints_.push_back({x, y});
+
+            // First process the latest image if available
+            int label_index = -1;
+            {
+                std::lock_guard<std::mutex> lock(image_mutex_);
+                if (latest_image_) {
+                    try {
+                        // Check for bgr8 encoding
+                        if (latest_image_->encoding != "bgr8") {
+                            RCLCPP_WARN(this->get_logger(), "Unsupported image encoding: %s", latest_image_->encoding.c_str());
+                            return;
+                        }
+
+                        // Create cv::Mat without cv_bridge
+                        cv::Mat image(
+                            latest_image_->height,
+                            latest_image_->width,
+                            CV_8UC3, // for "bgr8"
+                            const_cast<uint8_t*>(latest_image_->data.data()),
+                            latest_image_->step
+                        );
+
+                        // Clone the image to decouple from ROS buffer
+                        cv::Mat resized_image;
+                        cv::resize(image, resized_image, cv::Size(640, 360));
+
+                        label_index = send_image_for_detection(resized_image);
+                    } catch (const std::exception& e) {
+                        RCLCPP_ERROR(this->get_logger(), "Image conversion exception: %s", e.what());
+                    }
+                }
+            }
+            waypoints_.push_back({next_id_, x, y, labels[label_index]});
+            next_id_++;
             save_waypoints(waypoint_file_);
         }
 
         publish_waypoints();
     }
 
+    int send_image_for_detection(const cv::Mat& image) {
+        // Convert image to webp format
+        std::vector<uchar> buffer;
+        cv::imencode(".webp", image, buffer);
+        
+        // Prepare JSON data
+        nlohmann::json json_data = {
+            {"robot_info", "go2"},
+            {"service_type", "clip"},
+            {"image_id", 1},
+            {"queries", {
+                "a photo taken in a hallway",
+                "a photo taken inside a room",
+                "an open empty space without walls or furniture"
+            }}
+        };
+        
+        // Prepare the HTTP request
+        CURL *curl = curl_easy_init();
+        if (curl) {
+            struct curl_httppost *formpost = NULL;
+            struct curl_httppost *lastptr = NULL;
+            
+            // Add image part
+            curl_formadd(&formpost, &lastptr,
+                         CURLFORM_COPYNAME, "image",
+                         CURLFORM_BUFFER, "image.webp",
+                         CURLFORM_BUFFERPTR, buffer.data(),
+                         CURLFORM_BUFFERLENGTH, buffer.size(),
+                         CURLFORM_CONTENTTYPE, "image/webp",
+                         CURLFORM_END);
+            
+            // Add JSON part
+            std::string json_str = json_data.dump();
+            curl_formadd(&formpost, &lastptr,
+                         CURLFORM_COPYNAME, "json_data",
+                         CURLFORM_COPYCONTENTS, json_str.c_str(),
+                         CURLFORM_END);
+            
+            // Set the URL
+            std::string url = "http://" + edge_service_ip_ + ":50049/process";
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+            
+            // Response handling
+            std::string response_string;
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
+            
+            // Perform the request
+            CURLcode res = curl_easy_perform(curl);
+            if (res != CURLE_OK) {
+                RCLCPP_ERROR(this->get_logger(), "curl_easy_perform() failed: %s", curl_easy_strerror(res));
+            } else {
+                try {
+                    auto response_json = nlohmann::json::parse(response_string);
+                    auto results = response_json["result"].get<std::vector<float>>();
+                    // Find the index of the highest score
+                    auto max_it = std::max_element(results.begin(), results.end());
+                    size_t best_index = std::distance(results.begin(), max_it);
+                    RCLCPP_INFO(this->get_logger(), "CLIP Response: %s", response_string.c_str());
+                    return static_cast<int>(best_index);
+                } catch (const std::exception& e) {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to parse JSON response: %s", e.what());
+                }
+            }
+            
+            // Cleanup
+            curl_formfree(formpost);
+            curl_easy_cleanup(curl);
+        }
+
+        return -1;  // Error
+    }
+
     void publish_waypoints() {
-        visualization_msgs::msg::MarkerArray array;
+        typego_interface::msg::WayPointArray array;
+        visualization_msgs::msg::MarkerArray marker_array;
         for (size_t i = 0; i < waypoints_.size(); ++i) {
             auto &wp = waypoints_[i];
             visualization_msgs::msg::Marker m;
@@ -170,9 +331,35 @@ private:
             m.color.g = 1.0f;
             m.color.b = 0.0f;
             m.color.a = 1.0f;
-            array.markers.push_back(m);
+            marker_array.markers.push_back(m);
+
+            // Add text marker for the label
+            visualization_msgs::msg::Marker text_marker;
+            text_marker.header.frame_id = "map";
+            text_marker.header.stamp = this->now();
+            text_marker.ns = "waypoint_labels";
+            text_marker.id = i;
+            text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+            text_marker.action = visualization_msgs::msg::Marker::ADD;
+            text_marker.pose.position.x = wp.x;
+            text_marker.pose.position.y = wp.y;
+            text_marker.pose.position.z = 0.5;  // Above the waypoint
+            text_marker.scale.z = 0.3;  // Text height
+            text_marker.color.r = 1.0f;
+            text_marker.color.g = 1.0f;
+            text_marker.color.b = 1.0f;
+            text_marker.color.a = 1.0f;
+            text_marker.text = wp.label.empty() ? "No label" : wp.label;
+            marker_array.markers.push_back(text_marker);
+            typego_interface::msg::WayPoint wp_msg;
+            wp_msg.id = wp.id;
+            wp_msg.x = wp.x;
+            wp_msg.y = wp.y;
+            wp_msg.label = wp.label;
+            array.waypoints.push_back(wp_msg);
         }
         waypoint_pub_->publish(array);
+        waypoint_marker_pub_->publish(marker_array);
     }
 };
 

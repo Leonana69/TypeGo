@@ -14,6 +14,8 @@ from typego.yolo_client import ObjectInfo
 from typego.skill_item import SKILL_RET_TYPE
 from typego.utils import evaluate_value
 
+from typego_interface.msg import WayPointArray, WayPoint
+
 @dataclass
 class MemoryItem:
     start: float
@@ -64,12 +66,20 @@ class SLAMMap:
         self.robot_loc: tuple[float, float] = (0.0, 0.0)
         self.robot_yaw: float = 0.0
 
+        self.waypoints: Optional[WayPointArray] = None
+
     def update_map(self, map_data: ndarray, width: int, height: int, origin: tuple[float, float], resolution: float):
         self.map_data = map_data
         self.width = width
         self.height = height
         self.origin = origin
         self.resolution = resolution
+
+    def update_waypoints(self, waypoints: WayPointArray):
+        self.waypoints = waypoints
+        print(f"Waypoints updated: {len(waypoints.waypoints)} waypoints")
+        for i, waypoint in enumerate(waypoints.waypoints):
+            print(f"Waypoint {i}: id={waypoint.id}, x={waypoint.x}, y={waypoint.y}, label={waypoint.label}")
 
     def update_robot_state(self, robot_loc: tuple[float, float], robot_yaw: float):
         self.robot_loc = robot_loc
