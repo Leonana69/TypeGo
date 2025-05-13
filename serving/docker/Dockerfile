@@ -1,6 +1,6 @@
 FROM ultralytics/ultralytics:latest
 RUN apt update
-RUN pip install grpcio-tools quart uvicorn
+RUN pip install grpcio-tools quart uvicorn open_clip_torch
 
 # copy the contents of the current project to /workspace
 COPY .. /workspace
