@@ -42,4 +42,5 @@ def main():
     uvicorn.run(app, host="127.0.0.1", port=EDGE_SERVICE_PORT)
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn') 
     main()

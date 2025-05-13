@@ -70,7 +70,7 @@ class LLMController():
     
     def fetch_robot_map(self) -> Optional[Image.Image]:
         obs = self.robot.observation
-        if not obs or not obs.slam_map:
+        if not obs or obs.slam_map.is_empty():
             return None
 
         image = obs.slam_map.get_map()

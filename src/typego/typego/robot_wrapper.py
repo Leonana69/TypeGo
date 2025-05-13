@@ -88,6 +88,9 @@ class SLAMMap:
         
         map_image = cv2.resize(map_image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
         return map_image
+    
+    def is_empty(self) -> bool:
+        return self.map_data is None or self.map_data.size == 0
 
 class RobotObservation(ABC):
     def __init__(self, robot_info: RobotInfo, rate: int):
@@ -182,7 +185,7 @@ class RobotObservation(ABC):
             self._image_process_result = value
         
     @property
-    def slam_map(self) -> Optional[SLAMMap]:
+    def slam_map(self) -> SLAMMap:
         with self._slam_map_lock:
             return self._slam_map
     
