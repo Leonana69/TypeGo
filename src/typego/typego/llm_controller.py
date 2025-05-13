@@ -3,6 +3,7 @@ import queue, io, base64
 from openai import Stream
 from typing import Optional
 import time
+import threading
 
 from typego.yolo_client import YoloClient
 from typego.virtual_robot_wrapper import VirtualRobotWrapper
@@ -24,6 +25,8 @@ class LLMController():
             self.probe
         ]
 
+        self.inst_queue = queue.Queue()
+
         if robot_info.robot_type == "virtual":
             self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
         elif robot_info.robot_type == "go2":
@@ -31,6 +34,9 @@ class LLMController():
             self.robot = Go2Wrapper(robot_info, self.controller_func)
         
         self.planner.set_robot(self.robot)
+
+        self.plan_thread = threading.Thread(target=self.continous_plan)
+        self.plan_thread.start()
 
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
@@ -76,24 +82,23 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def continous_plan(self, rate: int = 2):
+    def continous_plan(self, rate: int = 1):
+        delay = 1 / rate
+        while not self.running:
+            time.sleep(0.1)
+        time.sleep(1.0)
         print_t(f"[C] Starting continuous planning...")
+        current_inst = "None"
         while self.running:
-            plan = self.planner.plan
-    
-    def execute_minispec(self, json_output: Stream | str):
-        interpreter = MiniSpecInterpreter(self.message_queue, self.robot)
-        interpreter.execute(json_output)
+            try:
+                current_inst = self.inst_queue.get_nowait()
+            except queue.Empty:
+                pass
+            plan = self.planner.s1_plan(current_inst)
+            if self.robot.append_action(current_inst, plan):
+                current_inst = "None"
+            print_t(f"[C] Plan: {plan}")
+            time.sleep(delay)
 
-    def handle_task(self, instruction: str):
-        # self._send_message('[TASK]: ' + instruction)
-        self._send_message('Planning...')
-        t1 = time.time()
-        current_plan = self.planner.plan(instruction)
-        t2 = time.time()
-        print_t(f"[C] Planning time: {t2 - t1:.2f}s")
-        print_t(f"[C] Plan: {current_plan}")
-        self.robot.append_action(current_plan)
-        
-        self._send_message(f'\n[Task ended]')
-        self._send_message('end')
+    def handle_task(self, inst: str):
+        self.inst_queue.put(inst)

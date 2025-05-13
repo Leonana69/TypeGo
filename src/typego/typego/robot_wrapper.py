@@ -17,9 +17,15 @@ from typego.utils import evaluate_value
 from typego_interface.msg import WayPointArray, WayPoint
 
 @dataclass
-class MemoryItem:
+class ActionItem:
     start: float
     action: str
+    result: str
+
+@dataclass
+class TaskItem:
+    start: float
+    task: str
     result: str
 
 class RobotMemory:
@@ -28,7 +34,8 @@ class RobotMemory:
     """
     def __init__(self, robot_info: RobotInfo):
         self.robot_info = robot_info
-        self.data: list[MemoryItem] = []
+        self.actions: list[ActionItem] = []
+        self.tasks: list[TaskItem] = []
         self.current_action: Optional[str] = None
 
     def set_idle(self):
@@ -37,14 +44,17 @@ class RobotMemory:
     def set_action(self, action: str):
         self.current_action = action
 
-    def add(self, action: str, result: bool):
-        self.data.append(MemoryItem(time.time(), action, "success" if result else "failed"))
+    def add_action(self, action: str, result: bool):
+        self.actions.append(ActionItem(time.time(), action, "success" if result else "failed"))
 
-    def get_str(self) -> str:
+    def add_subtask(self, task: str, result: bool):
+        self.tasks.append(TaskItem(time.time(), task, "success" if result else "failed"))
+
+    def get_actions_str(self) -> str:
         current_time = time.time()
-        self.data = [item for item in self.data if current_time - item.start < 60]
+        self.actions = [item for item in self.actions if current_time - item.start < 60]
         rslt = ""
-        for item in self.data:
+        for item in self.actions:
             start = time.strftime("%H:%M:%S", time.localtime(item.start))
             js = {
                 "time": start,
@@ -77,13 +87,19 @@ class SLAMMap:
 
     def update_waypoints(self, waypoints: WayPointArray):
         self.waypoints = waypoints
-        print(f"Waypoints updated: {len(waypoints.waypoints)} waypoints")
-        for i, waypoint in enumerate(waypoints.waypoints):
-            print(f"Waypoint {i}: id={waypoint.id}, x={waypoint.x}, y={waypoint.y}, label={waypoint.label}")
 
     def update_robot_state(self, robot_loc: tuple[float, float], robot_yaw: float):
         self.robot_loc = robot_loc
         self.robot_yaw = robot_yaw
+
+    def get_waypoint(self, id: int) -> Optional[WayPoint]:
+        if self.waypoints is None:
+            return None
+
+        for waypoint in self.waypoints.waypoints:
+            if waypoint.id == id:
+                return waypoint
+        return None
 
     def get_map(self) -> Optional[ndarray]:
         if self.map_data is None:
@@ -92,9 +108,22 @@ class SLAMMap:
         u = int((self.robot_loc[0] - self.origin[0]) / self.resolution)
         v = self.height - int((self.robot_loc[1] - self.origin[1]) / self.resolution)
 
-        map_image = self.map_data.copy()
+        map_image = np.zeros((self.height, self.width), dtype=np.uint8)
+        map_image[self.map_data == 0] = 255
+        map_image[self.map_data == -1] = 127
+        map_image[self.map_data > 0] = 0
+        map_image = cv2.flip(map_image, 0)
+        map_image = cv2.cvtColor(map_image, cv2.COLOR_GRAY2BGR)
+
         cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
         cv2.arrowedLine(map_image, (u, v), (int(u + 10 * np.cos(self.robot_yaw)), int(v - 10 * np.sin(self.robot_yaw))), (255, 0, 0), 1)
+
+        if self.waypoints is not None:
+            for waypoint in self.waypoints.waypoints:
+                u = int((waypoint.x - self.origin[0]) / self.resolution)
+                v = self.height - int((waypoint.y - self.origin[1]) / self.resolution)
+                cv2.circle(map_image, (u, v), 3, (255, 0, 0), -1)
+                cv2.putText(map_image, str(waypoint.id), (u + 3, v), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         
         map_image = cv2.resize(map_image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
         return map_image

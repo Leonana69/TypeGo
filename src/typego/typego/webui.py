@@ -56,42 +56,49 @@ class TypeFly:
         with self.ui:
             gr.HTML("""<h1>🪽 TypeFly: Power the Drone with Large Language Model</h1>""")
             gr.HTML(generate_povs())
-            gr.ChatInterface(self.ui_process_message, fill_height=False, examples=default_sentences, type='messages').queue()
+            self.chat_interface = gr.ChatInterface(
+                fn=self.ui_process_message,
+                fill_height=False,
+                examples=default_sentences,
+                type='messages',
+            ).queue()
+
+            # Start a separate thread for streaming assistant messages
+            Thread(target=self.stream_from_queue, daemon=True).start()
 
     def ui_process_message(self, message: str, history: list):
         print_t(f"[S] Receiving task description: {message}")
         if message == "exit":
             self.running = False
-            yield gr.ChatMessage(role="assistant", content="Shutting down...")
+            return gr.ChatMessage(role="assistant", content="Shutting down...")
         elif len(message) == 0:
-            yield gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
+            return gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
         else:
-            task_thread = Thread(target=self.llm_controller.handle_task, args=(message,))
-            task_thread.start()
-            complete_response = ''
-            while True:
-                msg = self.message_queue.get()
-                if isinstance(msg, tuple): # (image,)
-                    yield gr.ChatMessage(role="assistant", content=msg)
-                elif isinstance(msg, str): # "text"
-                    if msg == 'end':
-                        # Indicate end of the task to Gradio chat
-                        print_t(f"[C] Task completed!")
-                        return "Command Complete!"
-                    
-                    if msg.startswith('[LOG]'):
-                        complete_response += '\n'
-                    if msg.endswith('\\\\'):
-                        complete_response += msg.rstrip('\\\\')
-                    else:
-                        complete_response += msg + '\n'
-                yield gr.ChatMessage(role="assistant", content=complete_response)
+            self.llm_controller.handle_task(message)
+            return gr.ChatMessage(role="assistant", content="Okay! Working on it...")
+
+    def stream_from_queue(self):
+        complete_response = ''
+        while self.running:
+            try:
+                msg = self.message_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+
+            if isinstance(msg, tuple):  # (image,) or similar
+                self.chat_interface.chatbot.append(gr.ChatMessage(role="assistant", content=msg))
+            elif isinstance(msg, str):
+                if msg.startswith('[LOG]'):
+                    complete_response += '\n'
+                if msg.endswith('\\\\'):
+                    complete_response += msg.rstrip('\\\\')
+                else:
+                    complete_response += msg + '\n'
+
+                self.chat_interface.chatbot.append(gr.ChatMessage(role="assistant", content=complete_response))
 
     def generate_mjpeg_stream(self, source: str):
-        while True:
-            if not self.running:
-                break
-                
+        while self.running:
             if source == 'pov':
                 frame = self.llm_controller.fetch_robot_pov()
             elif source == 'map':

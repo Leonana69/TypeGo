@@ -514,7 +514,7 @@ class Statement:
             self.robot.memory.set_action(func)
             rslt = ll_skill.execute(args)
             self.robot.memory.set_idle()
-            self.robot.memory.add(func, rslt != False)
+            self.robot.memory.add_action(func, rslt != False)
             _print_debug(f'Executing low-level skill: {ll_skill.name} {args} {rslt}')
             return rslt
 
@@ -526,7 +526,7 @@ class Statement:
             self.active_high_level_skill.parse(hl_skill.execute(args)[0])
             val = self.active_high_level_skill.eval()
             self.robot.memory.set_idle()
-            self.robot.memory.add(func, val != False)
+            self.robot.memory.add_action(func, val != False)
             return val
         
         raise Exception(f'Skill {func_name} is not defined')

@@ -140,15 +140,15 @@ class Go2Observation(RobotObservation):
         data = np.array(msg.data, dtype=np.int8).reshape((height, width))
 
         # Convert OccupancyGrid to grayscale image
-        map_data = np.zeros((height, width), dtype=np.uint8)
-        map_data[data == 0] = 255      # Free space = white
-        map_data[data == -1] = 128     # Unknown = gray
-        map_data[data > 0] = 0         # Occupied = black
-        map_data = cv2.flip(map_data, 0)
+        # map_data = np.zeros((height, width), dtype=np.uint8)
+        # map_data[data == 0] = 255      # Free space = white
+        # map_data[data == -1] = 128     # Unknown = gray
+        # map_data[data > 0] = 0         # Occupied = black
+        # map_data = cv2.flip(map_data, 0)
 
-        # Convert to Colored map_data
-        map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
-        self.slam_map.update_map(map_data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
+        # # Convert to Colored map_data
+        # map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
+        self.slam_map.update_map(data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
         # print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
 
     def _waypoint_callback(self, msg: WayPointArray):
@@ -205,6 +205,7 @@ class Go2Wrapper(RobotWrapper):
         }
 
         self.execution_queue = queue.Queue()
+        self.stop_move_event = threading.Event()
 
         extra = self.robot_info.extra
         if "url" not in extra:
@@ -219,6 +220,8 @@ class Go2Wrapper(RobotWrapper):
         self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
         self.ll_skillset.add_low_level_skill("lying_down", lambda: self._action('stand_down'), "Stand down")
         self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in m", args=[SkillArg("x", float), SkillArg("y", float)])
+        self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
+        self.ll_skillset.add_low_level_skill("stop_move", self.stop_move, "Stop moving")
 
         high_level_skills = [
             {
@@ -275,11 +278,25 @@ class Go2Wrapper(RobotWrapper):
 
         self._send_control(control)
 
-    def append_action(self, action: str):
+    def append_action(self, inst: str, action: str) -> bool:
         """
         Appends an action to the execution queue.
         """
+        if action == "keep()":
+            return False
+        elif action == "stop_move()":
+            self.stop_move()
+            self.memory.add_action("stop_move()", True)
+            return False
+        elif action == "done(True)":
+            self.memory.add_subtask(inst, True)
+            return True
+        elif action == "done(False)":
+            self.memory.add_subtask(inst, False)
+            return True
+
         self.execution_queue.put(action)
+        return False
 
     def worker(self):
         while self.running:
@@ -314,8 +331,14 @@ class Go2Wrapper(RobotWrapper):
         self.state["y"] = round(self.observation.position[1], 2)
         self.state["yaw"] = int(self.observation.orientation[2] * 180.0 / math.pi)
         state_str += "State: " + json.dumps(self.state, cls=Go2StateEncoder) + "\n"
-        state_str += self.memory.get_str()
+        state_str += self.memory.get_actions_str()
         return state_str
+    
+    def stop_move(self):
+        print_t("[Go2] Stopping move...")
+        self.stop_move_event.set()
+        time.sleep(0.5)
+        self.stop_move_event.clear()
 
     def _action(self, action: str):
         control = {
@@ -379,8 +402,16 @@ class Go2Wrapper(RobotWrapper):
         self.state["posture"] = Go2Posture.STANDING
         return True
     
+    def goto_waypoint(self, id: int) -> bool:
+        print(f"-> Go to waypoint {id}")
+        wp = self.observation.slam_map.get_waypoint(id)
+        if wp is None:
+            print_t(f"Waypoint {id} not found")
+            return False
+        return self.goto(wp.x, wp.y)
+    
     def goto(self, x: float, y: float, timeout_sec: float = 30.0) -> bool:
-        print(f"-> Go to ({x}, {y}) m")
+        print(f"-> Go to ({x}, {y})")
         self.state["posture"] = Go2Posture.MOVING
 
         goal_msg = NavigateToPose.Goal()
@@ -424,14 +455,27 @@ class Go2Wrapper(RobotWrapper):
         send_goal_future = self.navigate_client.send_goal_async(goal_msg)
         send_goal_future.add_done_callback(goal_response_callback)
 
-        completed_in_time = done_event.wait(timeout=timeout_sec)
-        if not completed_in_time:
-            print_t("Navigation: Timeout — cancelling goal...")
+        # completed_in_time = done_event.wait(timeout=timeout_sec)
+        # if not completed_in_time:
+        #     print_t("Navigation: Timeout — cancelling goal...")
+        #     goal_handle = goal_handle_container.get("handle")
+        #     if goal_handle and goal_handle.accepted:
+        #         goal_handle.cancel_goal_async()
+        #     self.state["posture"] = Go2Posture.STANDING
+        #     return False
+
+        start_time = time.time()
+        while not done_event.is_set():
+            if self.stop_move_event.is_set() or time.time() - start_time > timeout_sec:
+                print_t("Navigation: Stopped")
+                break
+            time.sleep(0.1)
+
+        if not done_event.is_set():
             goal_handle = goal_handle_container.get("handle")
             if goal_handle and goal_handle.accepted:
                 goal_handle.cancel_goal_async()
-            self.state["posture"] = Go2Posture.STANDING
-            return False
+            result_status["status"] = False
 
         self.state["posture"] = Go2Posture.STANDING
         return result_status["status"]

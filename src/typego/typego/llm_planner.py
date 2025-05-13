@@ -37,7 +37,7 @@ class LLMPlanner():
     def set_robot(self, robot: RobotWrapper):
         self.robot = robot
 
-    def plan(self, instruction: str):
+    def s1_plan(self, instruction: str):
         robot_skills = ""
 
         robot_skills += f"#### Low-level skills\n"
