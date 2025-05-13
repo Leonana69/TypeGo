@@ -39,7 +39,7 @@ def main():
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
     from vision_service import app
-    uvicorn.run(app, host="127.0.0.1", port=EDGE_SERVICE_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=EDGE_SERVICE_PORT)
 
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn') 
