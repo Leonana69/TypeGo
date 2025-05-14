@@ -22,7 +22,8 @@ class LLMWrapper:
         )
 
         with open(CHAT_LOG_FILE, "a") as f:
-            f.write(prompt + "\n---\n")
+            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            f.write(remove_leading_prompt + "\n---\n")
             if not stream:
                 f.write(response.model_dump_json(indent=2) + "\n---\n")
 

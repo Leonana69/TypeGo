@@ -91,6 +91,9 @@ class YoloClient():
             label = f"{obj.name}"
             if obj.depth is not None:
                 label += f" ({obj.depth:.2f}m)"
+
+            # label += f" ({obj.x:.2f}, {obj.y:.2f})"
+
             draw_y = y1 - 40 if y1 - 40 > 0 else y2 + 10
             draw.text((x1, draw_y), label, fill='red', font=font)
 

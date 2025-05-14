@@ -158,6 +158,9 @@ class MiniSpecProgram:
     def eval(self) -> SKILL_RET_TYPE:
         return self.statement.eval()
     
+    def stop(self):
+        self.statement.stop()
+    
 class CodeAction(Enum):
     NONE = auto()
     ATOMIC = auto() # single statement
@@ -174,7 +177,9 @@ class StatementParsingState(Enum):
     ELSE_SUB_STATEMENT = auto()
 
 class Statement:
-    def __init__(self, env: dict, robot: RobotWrapper):
+    def __init__(self, env: dict, robot: RobotWrapper, log: bool=True):
+        self.log = log
+
         self.parse_state = StatementParsingState.DEFAULT
         self.parse_buffer: str = ''
         self.parse_depth: int = 0
@@ -204,6 +209,9 @@ class Statement:
         self.active_high_level_skill = None
         self.pause_event = Event()
         self.pause_event.set()  # Initially allow execution
+
+        self.stop_event = Event()
+        self.stop_event.clear()
 
     """
     Print the statement in a simple format for debugging.
@@ -296,14 +304,14 @@ class Statement:
                 continue
             # print('--' * self.depth + f'-> {c}, action: {self.action}, state: {self.parse_state}')
 
-            if c == '\'':
+            if c == '\'' or c == '"':
                 self.quotation = not self.quotation
 
             match self.action:
                 case CodeAction.NONE:
                     if c == '{':
                         self.action = CodeAction.SEQ
-                        self.current_statement = Statement(self.env, self.robot)
+                        self.current_statement = Statement(self.env, self.robot, self.log)
                         self.parse_depth += 1
                     elif c == '?':
                         self.action = CodeAction.IF
@@ -338,7 +346,7 @@ class Statement:
 
                     if done:
                         self.sub_statements.append(self.current_statement)
-                        self.current_statement = Statement(self.env, self.robot)
+                        self.current_statement = Statement(self.env, self.robot, self.log)
                         self.current_statement.parse(c)
 
                     if self.quotation:
@@ -363,7 +371,7 @@ class Statement:
                                 self.condition.append(self.parse_buffer)
                                 self.executable = True
                                 self.parse_state = StatementParsingState.IF_SUB_STATEMENT
-                                self.current_statement = Statement(self.env, self.robot)
+                                self.current_statement = Statement(self.env, self.robot, self.log)
                                 self.current_statement.parse(c)
                                 self.parse_depth += 1
                             else:
@@ -372,7 +380,7 @@ class Statement:
                         case StatementParsingState.IF_SUB_STATEMENT:
                             if self.current_statement.parse(c):
                                 self.sub_statements.append(self.current_statement)
-                                self.current_statement = Statement(self.env, self.robot)
+                                self.current_statement = Statement(self.env, self.robot, self.log)
 
                             if c == '{':
                                 self.parse_depth += 1
@@ -385,7 +393,7 @@ class Statement:
                                 self.parse_buffer = ''
                                 self.parse_state = StatementParsingState.CONDITION
                             elif c == '{':
-                                self.current_statement = Statement(self.env, self.robot)
+                                self.current_statement = Statement(self.env, self.robot, self.log)
                                 self.current_statement.parse(c)
                                 self.parse_state = StatementParsingState.IF_SUB_STATEMENT
                                 self.parse_depth += 1
@@ -399,7 +407,7 @@ class Statement:
                                 self.loop_count = int(self.parse_buffer)
                                 self.parse_buffer = ''
                                 self.parse_state = StatementParsingState.DEFAULT
-                                self.current_statement = Statement(self.env, self.robot)
+                                self.current_statement = Statement(self.env, self.robot, self.log)
                                 self.current_statement.parse(c)
                             elif c.isdigit():
                                 self.parse_buffer += c
@@ -439,14 +447,36 @@ class Statement:
             if isinstance(sub_statement, Statement):
                 sub_statement.resume()
 
+    def stop(self):
+        """Stop the execution of the statement."""
+        print_t(f'Stop statement: {self.to_string_simple()}')
+        self.stop_event.set()
+
+        if self.active_high_level_skill:
+            self.active_high_level_skill.stop()
+
+        for sub_statement in self.sub_statements:
+            if isinstance(sub_statement, Statement):
+                sub_statement.stop()
+
+    def _check_pause_stop(self) -> bool:
+        """Wait for pause to clear, return True if stop is set."""
+        self.pause_event.wait()
+        if self.stop_event.is_set():
+            _print_debug(f'Stop statement: {self.to_string_simple()}')
+            self.ret = True
+            return True
+        return False
+
     def eval(self) -> SKILL_RET_TYPE:
-        _print_debug(f'Eval statement: {self.to_string_simple()}')
+        _print_debug(f'Eval statement: {self.to_string()}')
         while not self.executable:
             time.sleep(0.1)
         default_ret_val: SKILL_RET_TYPE = None
 
         # Check if the statement is paused
-        self.pause_event.wait()  # Wait until the event is set
+        if self._check_pause_stop():
+            return False
 
         match self.action:
             case CodeAction.ATOMIC:
@@ -462,7 +492,8 @@ class Statement:
 
             case CodeAction.IF:
                 for i in range(len(self.condition)):
-                    self.pause_event.wait()  # Check for pause
+                    if self._check_pause_stop():
+                        return False
                     if self.eval_condition(self.condition[i]) == True:
                         ret_val = self.sub_statements[i].eval()
                         if self.sub_statements[i].ret:
@@ -478,6 +509,8 @@ class Statement:
             case CodeAction.LOOP:
                 assert len(self.sub_statements) == 1
                 for i in range(self.loop_count):
+                    if self._check_pause_stop():
+                        return False
                     ret_val = self.sub_statements[0].eval()
                     if self.sub_statements[0].ret:
                         self.ret = True
@@ -488,7 +521,8 @@ class Statement:
         return default_ret_val
 
     def eval_function(self, func: str) -> SKILL_RET_TYPE:
-        self.pause_event.wait()  # Check for pause
+        if self._check_pause_stop():
+            return False
         _print_debug(f'Eval function: {func}')
 
         lp = func.find('(')
@@ -511,28 +545,33 @@ class Statement:
 
         ll_skill = self.robot.ll_skillset.get_skill(func_name)
         if ll_skill:
-            self.robot.memory.set_action(func)
+            if self.log:
+                self.robot.memory.set_action(func)
             rslt = ll_skill.execute(args)
-            self.robot.memory.set_idle()
-            self.robot.memory.add_action(func, rslt != False)
+            if self.log:
+                self.robot.memory.set_idle()
+                self.robot.memory.add_action(func, rslt != False)
             _print_debug(f'Executing low-level skill: {ll_skill.name} {args} {rslt}')
             return rslt
 
         hl_skill = self.robot.hl_skillset.get_skill(func_name)
         if hl_skill:
             _print_debug(f'Executing high-level skill: {hl_skill.name}', args, hl_skill.execute(args)[0])
-            self.robot.memory.set_action(func)
-            self.active_high_level_skill = Statement(self.env, self.robot)
-            self.active_high_level_skill.parse(hl_skill.execute(args)[0])
+            if self.log:
+                self.robot.memory.set_action(func)
+            self.active_high_level_skill = Statement(self.env, self.robot, False)
+            self.active_high_level_skill.parse(hl_skill.execute(args))
             val = self.active_high_level_skill.eval()
-            self.robot.memory.set_idle()
-            self.robot.memory.add_action(func, val != False)
+            if self.log:
+                self.robot.memory.set_idle()
+                self.robot.memory.add_action(func, val != False)
             return val
         
         raise Exception(f'Skill {func_name} is not defined')
 
     def eval_expr(self, expr: str) -> SKILL_RET_TYPE:
-        self.pause_event.wait()  # Check for pause
+        if self._check_pause_stop():
+            return False
         _print_debug(f'Eval expr: {expr}')
         expr = expr.strip()
 
@@ -612,7 +651,8 @@ class Statement:
             return evaluate_value(expr)
 
     def eval_condition(self, condition: str) -> SKILL_RET_TYPE:
-        self.pause_event.wait()  # Check for pause
+        if self._check_pause_stop():
+            return False
         ### TODO: add support for nested conditions
 
         # Multiple conditions

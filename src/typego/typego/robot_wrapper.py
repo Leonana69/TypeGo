@@ -19,6 +19,7 @@ from typego_interface.msg import WayPointArray, WayPoint
 @dataclass
 class ActionItem:
     start: float
+    task: str
     action: str
     result: str
 
@@ -36,6 +37,7 @@ class RobotMemory:
         self.robot_info = robot_info
         self.actions: list[ActionItem] = []
         self.tasks: list[TaskItem] = []
+        self.current_task: Optional[str] = None
         self.current_action: Optional[str] = None
 
     def set_idle(self):
@@ -45,7 +47,7 @@ class RobotMemory:
         self.current_action = action
 
     def add_action(self, action: str, result: bool):
-        self.actions.append(ActionItem(time.time(), action, "success" if result else "failed"))
+        self.actions.append(ActionItem(time.time(), self.current_task, action, "success" if result else "failed"))
 
     def add_subtask(self, task: str, result: bool):
         self.tasks.append(TaskItem(time.time(), task, "success" if result else "failed"))
@@ -58,6 +60,7 @@ class RobotMemory:
             start = time.strftime("%H:%M:%S", time.localtime(item.start))
             js = {
                 "time": start,
+                "task": item.task,
                 "action": item.action,
                 "result": item.result
             }
@@ -138,8 +141,8 @@ class RobotObservation(ABC):
 
         self._image: Optional[Image.Image] = None
         self._depth: Optional[ndarray] = None
-        self._orientation: Optional[ndarray] = None
-        self._position: Optional[ndarray] = None
+        self._orientation: ndarray = np.array([0.0, 0.0, 0.0])
+        self._position: ndarray = np.array([0.0, 0.0, 0.0])
         self._slam_map: SLAMMap = SLAMMap()
 
         # Add individual locks for each property
@@ -194,7 +197,7 @@ class RobotObservation(ABC):
             self._depth = value
 
     @property
-    def orientation(self) -> Optional[ndarray]:
+    def orientation(self) -> ndarray:
         with self._orientation_lock:
             return self._orientation
         
@@ -204,7 +207,7 @@ class RobotObservation(ABC):
             self._orientation = value
 
     @property
-    def position(self) -> Optional[ndarray]:
+    def position(self) -> ndarray:
         with self._position_lock:
             return self._position
         
@@ -334,10 +337,9 @@ class RobotWrapper(ABC):
         return f"Objects: {{{obj_str}}}"
 
     def get_obj_info(self, object_name: str) -> ObjectInfo:
-        object_name = object_name.strip('\'').lower()
+        object_name = object_name.strip('\'').strip('"').lower()
 
-        # try to get the object info for 10 times
-        for _ in range(5):
+        for _ in range(3):
             object_list = self.get_obj_list()
             for obj in object_list:
                 if obj.name.startswith(object_name):

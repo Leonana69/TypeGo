@@ -205,7 +205,8 @@ class Go2Wrapper(RobotWrapper):
         }
 
         self.execution_queue = queue.Queue()
-        self.stop_move_event = threading.Event()
+        self.active_program = None
+        self.stop_action_event = threading.Event()
 
         extra = self.robot_info.extra
         if "url" not in extra:
@@ -219,9 +220,10 @@ class Go2Wrapper(RobotWrapper):
 
         self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
         self.ll_skillset.add_low_level_skill("lying_down", lambda: self._action('stand_down'), "Stand down")
-        self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in m", args=[SkillArg("x", float), SkillArg("y", float)])
+        # self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in m", args=[SkillArg("x", float), SkillArg("y", float)])
         self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
-        self.ll_skillset.add_low_level_skill("stop_move", self.stop_move, "Stop moving")
+        self.ll_skillset.add_low_level_skill("stop_action", self.stop_action, "Stop current action")
+        self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
 
         high_level_skills = [
             {
@@ -240,7 +242,7 @@ class Go2Wrapper(RobotWrapper):
                 "description": "Rotate to align with object $1",
             },
             {
-                "name": "goto",
+                "name": "goto_object",
                 "definition": "2{orienting($1);_1=object_distance($1)/2;{move(_1, 0)}}",
                 "description": "Move to object $1 in the view (orienting then go forward)"
             }
@@ -284,9 +286,9 @@ class Go2Wrapper(RobotWrapper):
         """
         if action == "keep()":
             return False
-        elif action == "stop_move()":
-            self.stop_move()
-            self.memory.add_action("stop_move()", True)
+        elif action == "stop_action()":
+            self.stop_action()
+            self.memory.add_action("stop_action()", True)
             return False
         elif action == "done(True)":
             self.memory.add_subtask(inst, True)
@@ -303,9 +305,9 @@ class Go2Wrapper(RobotWrapper):
             if not self.execution_queue.empty():
                 action = self.execution_queue.get()
                 print_t(f"[Go2] Executing action: {action}")
-                prog = MiniSpecProgram(self, None)
-                prog.parse(action)
-                prog.eval()
+                self.active_program = MiniSpecProgram(self, None)
+                self.active_program.parse(action)
+                self.active_program.eval()
             time.sleep(0.1)
 
     @overrides
@@ -334,16 +336,49 @@ class Go2Wrapper(RobotWrapper):
         state_str += self.memory.get_actions_str()
         return state_str
     
-    def stop_move(self):
-        print_t("[Go2] Stopping move...")
-        self.stop_move_event.set()
+    def stop_action(self):
+        print_t("[Go2] Stopping action...")
+        self.stop_action_event.set()
+        if self.active_program:
+            self.active_program.stop()
         time.sleep(0.5)
-        self.stop_move_event.clear()
+        self.stop_action_event.clear()
 
-    def _action(self, action: str):
+    def look_object(self, object_name: str):
+        current_pitch = 0
+        current_yaw = 0
+
+        while not self.stop_action_event.is_set():
+            info = self.get_obj_info(object_name)
+
+            if info is None:
+                break
+
+            dx = 0.5 - info.x
+            dy = info.y - 0.5
+
+            # Dead zone in x-direction
+            if abs(dx) > 0.05:
+                current_yaw += dx / 4.0
+                current_yaw = max(-0.6, min(0.6, current_yaw))
+            # Dead zone in y-direction (optional: adjust based on your use case)
+            if abs(dy) > 0.05:
+                current_pitch += dy / 6.0
+                current_pitch = max(-0.75, min(0.75, current_pitch))
+
+            # If yaw exceeds limits, rotate and skip the Euler update
+            if abs(current_yaw) > 0.6:
+                self.rotate(current_yaw * 180.0 / math.pi / 2)
+                continue
+
+            self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw)
+            time.sleep(0.1)
+
+    def _action(self, action: str, **args):
         control = {
             "command": action,
-            "timeout": 3.0
+            "timeout": 3.0,
+            **args
         }
 
         match action:
@@ -466,7 +501,7 @@ class Go2Wrapper(RobotWrapper):
 
         start_time = time.time()
         while not done_event.is_set():
-            if self.stop_move_event.is_set() or time.time() - start_time > timeout_sec:
+            if self.stop_action_event.is_set() or time.time() - start_time > timeout_sec:
                 print_t("Navigation: Stopped")
                 break
             time.sleep(0.1)

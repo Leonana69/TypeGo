@@ -94,6 +94,7 @@ class LLMController():
                 current_inst = self.inst_queue.get_nowait()
             except queue.Empty:
                 pass
+            self.robot.memory.current_task = current_inst
             plan = self.planner.s1_plan(current_inst)
             if self.robot.append_action(current_inst, plan):
                 current_inst = "None"

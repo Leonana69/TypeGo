@@ -36,8 +36,6 @@ def evaluate_value(s: str) -> SKILL_RET_TYPE:
     elif s == 'None' or len(s) == 0:
         return None
     else:
-        if not (s.startswith("'") and s.endswith("'")):
-            return f"'{s}'"
         return s
     
 def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
