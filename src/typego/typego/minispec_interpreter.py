@@ -561,7 +561,11 @@ class Statement:
                 self.robot.memory.set_action(func)
             self.active_high_level_skill = Statement(self.env, self.robot, False)
             self.active_high_level_skill.parse(hl_skill.execute(args))
-            val = self.active_high_level_skill.eval()
+            try:
+                val = self.active_high_level_skill.eval()
+            except Exception as e:
+                print_t(f'Error executing high-level skill: {e}')
+                val = False
             if self.log:
                 self.robot.memory.set_idle()
                 self.robot.memory.add_action(func, val != False)

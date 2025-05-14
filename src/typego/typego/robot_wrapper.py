@@ -126,7 +126,7 @@ class SLAMMap:
                 u = int((waypoint.x - self.origin[0]) / self.resolution)
                 v = self.height - int((waypoint.y - self.origin[1]) / self.resolution)
                 cv2.circle(map_image, (u, v), 3, (255, 0, 0), -1)
-                cv2.putText(map_image, str(waypoint.id), (u + 3, v), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                cv2.putText(map_image, f"{waypoint.id}", (u + 3, v), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         
         map_image = cv2.resize(map_image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
         return map_image

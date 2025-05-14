@@ -329,6 +329,7 @@ class Go2Wrapper(RobotWrapper):
     @overrides
     def get_state(self) -> str:
         state_str = ""
+        self.state["time"] = time.strftime("%H:%M:%S", time.localtime(time.time()))
         self.state["x"] = round(self.observation.position[0], 2)
         self.state["y"] = round(self.observation.position[1], 2)
         self.state["yaw"] = int(self.observation.orientation[2] * 180.0 / math.pi)
@@ -360,7 +361,6 @@ class Go2Wrapper(RobotWrapper):
             # Dead zone in x-direction
             if abs(dx) > 0.05:
                 current_yaw += dx / 4.0
-                current_yaw = max(-0.6, min(0.6, current_yaw))
             # Dead zone in y-direction (optional: adjust based on your use case)
             if abs(dy) > 0.05:
                 current_pitch += dy / 6.0
@@ -368,7 +368,8 @@ class Go2Wrapper(RobotWrapper):
 
             # If yaw exceeds limits, rotate and skip the Euler update
             if abs(current_yaw) > 0.6:
-                self.rotate(current_yaw * 180.0 / math.pi / 2)
+                self.rotate(current_yaw * 180.0 / math.pi / 4)
+                current_yaw = 0
                 continue
 
             self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw)
