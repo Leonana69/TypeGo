@@ -95,7 +95,7 @@ class LLMController():
             except queue.Empty:
                 pass
             self.robot.memory.current_task = current_inst
-            plan = self.planner.s1_plan(current_inst)
+            plan = self.planner.s2_plan(current_inst)
             if self.robot.append_action(current_inst, plan):
                 current_inst = "None"
             print_t(f"[C] Plan: {plan}")

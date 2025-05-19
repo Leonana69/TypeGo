@@ -103,6 +103,16 @@ class SLAMMap:
             if waypoint.id == id:
                 return waypoint
         return None
+    
+    def get_waypoint_list_str(self) -> str:
+        if self.waypoints is None:
+            return "Waypoints: []\n"
+
+        waypoint_list = "Waypoints: [\n"
+        for waypoint in self.waypoints.waypoints:
+            waypoint_list += (f"  id: {waypoint.id}, loc: ({round(waypoint.x, 2)}, {round(waypoint.y, 2)}), label: {waypoint.label}\n")
+        waypoint_list += "]\n"
+        return waypoint_list
 
     def get_map(self) -> Optional[ndarray]:
         if self.map_data is None:
