@@ -29,15 +29,16 @@ class ObjectInfo:
 
     def __str__(self) -> str:
         base_info = {
+            "name": self.name,
             "x": round(self.x, 2),
             "y": round(self.y, 2),
-            "size": (round(self.w, 2), round(self.h, 2))
+            "size": [round(self.w, 2), round(self.h, 2)]
         }
 
         if self.depth is not None:
             base_info["dist"] = round(self.depth, 2)
 
-        return f"\"{self.name}\": {base_info}"
+        return json.dumps(base_info)
 
 """
 Access the YOLO service through http.

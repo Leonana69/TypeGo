@@ -26,6 +26,7 @@ class LLMController():
         ]
 
         self.inst_queue = queue.Queue()
+        self.subtask_queue = queue.Queue()
 
         if robot_info.robot_type == "virtual":
             self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
@@ -35,8 +36,11 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        self.plan_thread = threading.Thread(target=self.continous_plan)
-        self.plan_thread.start()
+        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        # self.s1_loop_thread.start()
+
+        self.s2_loop_thread = threading.Thread(target=self.s2_loop)
+        self.s2_loop_thread.start()
 
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
@@ -82,24 +86,51 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def continous_plan(self, rate: int = 1):
+    def s1_loop(self, rate: float = 1.0):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
         time.sleep(1.0)
         print_t(f"[C] Starting continuous planning...")
-        current_inst = "None"
+        current_subtask = "None"
         while self.running:
+            start_time = time.time()
             try:
-                current_inst = self.inst_queue.get_nowait()
+                current_subtask = self.subtask_queue.get_nowait()
             except queue.Empty:
                 pass
-            self.robot.memory.current_task = current_inst
-            plan = self.planner.s2_plan(current_inst)
-            if self.robot.append_action(current_inst, plan):
-                current_inst = "None"
+            self.robot.memory.current_task = current_subtask
+            plan = self.planner.s1_plan(current_subtask)
+            if self.robot.append_action(current_subtask, plan):
+                current_subtask = "None"
             print_t(f"[C] Plan: {plan}")
-            time.sleep(delay)
+            
+            elapsed = time.time() - start_time
+            sleep_time = max(0, delay - elapsed)
+            time.sleep(sleep_time)
 
-    def handle_task(self, inst: str):
+    def s2_loop(self, rate: float = 0.1):
+        delay = 1 / rate
+        while not self.running:
+            time.sleep(0.1)
+        time.sleep(1.0)
+        print_t(f"[C] Starting continuous planning...")
+
+        while self.running:
+            start_time = time.time()
+            new_inst = None
+            try:
+                new_inst = self.inst_queue.get_nowait()
+                self.robot.memory.new_instruction(new_inst)
+            except queue.Empty:
+                pass
+
+            plan = self.planner.s2_plan(new_inst)
+            print_t(f"[C] Plan: {plan}")
+            self.robot.memory.process_s2_response(plan)
+            elapsed = time.time() - start_time
+            sleep_time = max(0, delay - elapsed)
+            time.sleep(sleep_time)
+
+    def user_instruction(self, inst: str):
         self.inst_queue.put(inst)

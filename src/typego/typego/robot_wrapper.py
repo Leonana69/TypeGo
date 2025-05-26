@@ -13,60 +13,9 @@ from typego.robot_info import RobotInfo
 from typego.yolo_client import ObjectInfo
 from typego.skill_item import SKILL_RET_TYPE
 from typego.utils import evaluate_value
+from typego.memory import RobotMemory
 
 from typego_interface.msg import WayPointArray, WayPoint
-
-@dataclass
-class ActionItem:
-    start: float
-    task: str
-    action: str
-    result: str
-
-@dataclass
-class TaskItem:
-    start: float
-    task: str
-    result: str
-
-class RobotMemory:
-    """
-    'exec_history' is a list that stores the history of robot actions.
-    """
-    def __init__(self, robot_info: RobotInfo):
-        self.robot_info = robot_info
-        self.actions: list[ActionItem] = []
-        self.tasks: list[TaskItem] = []
-        self.current_task: Optional[str] = None
-        self.current_action: Optional[str] = None
-
-    def set_idle(self):
-        self.current_action = 'idle()'
-
-    def set_action(self, action: str):
-        self.current_action = action
-
-    def add_action(self, action: str, result: bool):
-        self.actions.append(ActionItem(time.time(), self.current_task, action, "success" if result else "failed"))
-
-    def add_subtask(self, task: str, result: bool):
-        self.tasks.append(TaskItem(time.time(), task, "success" if result else "failed"))
-
-    def get_actions_str(self) -> str:
-        current_time = time.time()
-        self.actions = [item for item in self.actions if current_time - item.start < 60]
-        rslt = ""
-        for item in self.actions:
-            start = time.strftime("%H:%M:%S", time.localtime(item.start))
-            js = {
-                "time": start,
-                "task": item.task,
-                "action": item.action,
-                "result": item.result
-            }
-            rslt += f"{js}\n"
-
-        return f"Current action: {self.current_action}\nHistory: [{rslt}]"
 
 class SLAMMap:
     def __init__(self):
@@ -104,14 +53,27 @@ class SLAMMap:
                 return waypoint
         return None
     
+    def get_nearest_waypoint_id(self, loc: tuple[float, float]) -> int | None:
+        if self.waypoints is None or not self.waypoints.waypoints:
+            return None
+
+        min_dist = float('inf')
+        nearest_id = None
+        for waypoint in self.waypoints.waypoints:
+            distance = np.sqrt((waypoint.x - loc[0]) ** 2 + (waypoint.y - loc[1]) ** 2)
+            if distance < min_dist:
+                min_dist = distance
+                nearest_id = waypoint.id
+        return nearest_id
+
     def get_waypoint_list_str(self) -> str:
         if self.waypoints is None:
-            return "Waypoints: []\n"
+            return "[]\n"
 
-        waypoint_list = "Waypoints: [\n"
+        waypoint_list = "[\n"
         for waypoint in self.waypoints.waypoints:
-            waypoint_list += (f"  id: {waypoint.id}, loc: ({round(waypoint.x, 2)}, {round(waypoint.y, 2)}), label: {waypoint.label}\n")
-        waypoint_list += "]\n"
+            waypoint_list += (f"    {{\"id\": {waypoint.id}, \"loc\": [{round(waypoint.x, 2)}, {round(waypoint.y, 2)}], \"label\": \"{waypoint.label}\"}},\n")
+        waypoint_list += "]"
         return waypoint_list
 
     def get_map(self) -> Optional[ndarray]:
@@ -343,8 +305,7 @@ class RobotWrapper(ABC):
     def get_obj_list_str(self) -> str:
         """Returns a formatted string of detected objects."""
         object_list = self.get_obj_list()
-        obj_str = ",\n".join([str(obj) for obj in object_list])
-        return f"Objects: {{{obj_str}}}"
+        return f"[{', '.join(str(obj) for obj in object_list)}]"
 
     def get_obj_info(self, object_name: str) -> ObjectInfo:
         object_name = object_name.strip('\'').strip('"').lower()

@@ -1,0 +1,224 @@
+import time
+from dataclasses import dataclass
+from typing import Optional
+from typego.robot_info import RobotInfo
+import json
+
+STATUS_SUCCESS = "success"
+STATUS_FAILED = "failed"
+STATUS_IN_PROGRESS = "in_progress"
+STATUS_PENDING = "pending"
+
+def format_time(seconds: float) -> str:
+    """Format seconds into a human-readable string."""
+    if seconds <= 0:
+        return "N/A"
+    return time.strftime("%H:%M:%S", time.localtime(seconds))
+
+@dataclass
+class ActionItem:
+    start: float
+    end: float
+    content: str
+    status: str
+
+    def _full(self) -> dict:
+        js = {
+            "start": format_time(self.start),
+            "end": format_time(self.end),
+            "action": self.content,
+            "status": self.status
+        }
+        return js
+
+@dataclass
+class SubtaskItem:
+    start: float
+    end: float
+    content: str
+    actions: list[ActionItem]
+    status: str
+
+    def finish_action(self, result: bool):
+        if not self.actions:
+            return
+        
+        action = self.actions[-1]
+        action.end = time.time()
+        action.status = STATUS_SUCCESS if result else STATUS_FAILED
+
+    def append_action(self, action: str):
+        action_item = ActionItem(start=time.time(), end=0.0, content=action, status=STATUS_IN_PROGRESS)
+        self.actions.append(action_item)
+
+    def _sim(self) -> dict:
+        js = {
+            "start": format_time(self.start),
+            "end": format_time(self.end),
+            "subtask": self.content,
+            "status": self.status
+        }
+        return js
+    
+    def _full(self) -> dict:
+        js = {
+            "start": format_time(self.start),
+            "end": format_time(self.end),
+            "subtask": self.content,
+            "status": self.status,
+            "actions": [action._full() for action in self.actions]
+        }
+        return js
+    
+@dataclass
+class InstructionItem:
+    start: float
+    end: float
+    content: str
+    plan: list[SubtaskItem]
+    status: str
+
+    def new(content: str):
+        return InstructionItem(
+            start=time.time(),
+            end=0.0,
+            content=content,
+            plan=[],
+            status=STATUS_PENDING
+        )
+    
+    def idle():
+        return InstructionItem(
+            start=time.time(),
+            end=0.0,
+            content="Idle",
+            plan=[],
+            status=STATUS_IN_PROGRESS
+        )
+    
+    def is_idle(self) -> bool:
+        return self.content == "Idle"
+
+    def set_plan(self, plan: list[str]):
+        self.plan = [SubtaskItem(start=0.0, end=0.0, content=subtask, actions=[], status=STATUS_PENDING) for subtask in plan]
+
+    def get_latest_subtask(self) -> SubtaskItem | None:
+        for subtask in self.plan:
+            if subtask.status == STATUS_IN_PROGRESS:
+                return subtask
+            elif subtask.status == STATUS_PENDING:
+                subtask.status = STATUS_IN_PROGRESS
+                subtask.start = time.time()
+                return subtask
+        return None
+
+    def finish_subtask(self, result: bool):
+        if len(self.plan) == 0:
+            print("No subtasks to finish.")
+            return
+        subtask = self.get_latest_subtask()
+        if subtask:
+            subtask.end = time.time()
+            subtask.status = STATUS_SUCCESS if result else STATUS_FAILED
+
+        if all(subtask.status != STATUS_IN_PROGRESS for subtask in self.plan):
+            self.end = time.time()
+            # TODO: maybe different status for the instruction itself
+            self.status = STATUS_SUCCESS if result else STATUS_FAILED
+
+    def is_finished(self) -> bool:
+        return self.status in (STATUS_SUCCESS, STATUS_FAILED)
+
+    def _sim(self) -> dict:
+        js = {
+            "start": format_time(self.start),
+            "end": format_time(self.end),
+            "inst": self.content,
+            "status": self.status
+        }
+        return js
+
+    def _full(self) -> dict:
+        js = {
+            "start": format_time(self.start),
+            "end": format_time(self.end),
+            "inst": self.content,
+            "status": self.status,
+            "plan": [subtask._sim() for subtask in self.plan]
+        }
+        return js
+    
+class RobotMemory:
+    def __init__(self, robot_info: RobotInfo):
+        self.robot_info = robot_info
+        self.history_inst: list[InstructionItem] = []
+        self.current_inst: InstructionItem = InstructionItem.idle()
+        self.current_subtask: Optional[SubtaskItem] = None
+
+    def get_history_inst_str(self) -> str:
+        rslt = "["
+        in_progress = False
+        for item in self.history_inst:
+            if item.status == STATUS_IN_PROGRESS:
+                in_progress = True
+            rslt += str(item._sim())
+        if not in_progress:
+            rslt += str(self.current_inst._sim())
+        rslt += "]"
+        return rslt
+    
+    def get_current_plan_str(self) -> str:
+        rslt = "["
+        for subtask in self.current_inst.plan:
+            rslt += str(subtask._sim())
+        rslt += "]"
+        return rslt
+
+    # def get_current_subtask_str(self) -> str:
+    #     if self.current_inst is None or self.current_subtask is None:
+    #         return "None"
+    #     start = time.strftime("%H:%M:%S", time.localtime(self.current_subtask.start))
+    #     if self.current_subtask.end > 0:
+    #         end = time.strftime("%H:%M:%S", time.localtime(self.current_subtask.end))
+    #     else:
+    #         end = "N/A"
+    #     js = {
+    #         "start": start,
+    #         "end": end,
+    #         "subtask": self.current_subtask.content,
+    #         "status": self.current_subtask.status
+    #     }
+    #     return f"{js}\n"
+
+    def new_instruction(self, inst: str | None):
+        if inst:
+            self.history_inst.append(InstructionItem.new(inst))
+
+        if self.current_inst is None:
+            for item in self.history_inst:
+                if not item.is_finished():
+                    self.current_inst = item
+                    self.current_inst.status = STATUS_IN_PROGRESS
+                    break
+
+    def process_s2_response(self, response: str):
+        if response.startswith('```json'):
+            response = response[7:-3].strip()
+
+        js = json.loads(response)
+        interrupt = js.get('interrupt_current_task', False)
+        self.current_inst.set_plan(js['new_plan'])
+
+    def get_subtask(self) -> Optional[SubtaskItem]:
+        if self.current_inst is None:
+            print("No current instruction to get subtask from.")
+            return None
+        return self.current_inst.get_latest_subtask()
+    
+    def end_subtask(self, result: bool):
+        if self.current_inst is None or self.current_subtask is None:
+            print("No current instruction or subtask to end.")
+            return
+        self.current_inst.finish_subtask(result)
+        if self.current_inst.is_finished():
+            self.current_inst = InstructionItem.idle()

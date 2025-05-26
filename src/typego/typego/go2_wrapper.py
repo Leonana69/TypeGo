@@ -328,15 +328,13 @@ class Go2Wrapper(RobotWrapper):
 
     @overrides
     def get_state(self) -> str:
-        state_str = ""
-        self.state["time"] = time.strftime("%H:%M:%S", time.localtime(time.time()))
-        self.state["x"] = round(self.observation.position[0], 2)
-        self.state["y"] = round(self.observation.position[1], 2)
-        self.state["yaw"] = int(self.observation.orientation[2] * 180.0 / math.pi)
-        state_str += "State: " + json.dumps(self.state, cls=Go2StateEncoder) + "\n"
-        state_str += self.memory.get_actions_str()
-        return state_str
-    
+        js = {
+            "time": time.strftime("%H:%M:%S", time.localtime(time.time())),
+            "posture": self.state["posture"].value,
+            "waypoint_id": self.observation.slam_map.get_nearest_waypoint_id((self.observation.position[0], self.observation.position[1])),
+        }
+        return json.dumps(js)
+
     def stop_action(self):
         print_t("[Go2] Stopping action...")
         self.stop_action_event.set()

@@ -1,161 +1,76 @@
 # EXAMPLE 1
-```
-## USER INSTRUCTION
-Go to the other side of the room and find an apple and take a picture of it.
-
-## ROBOT STATE
-State: {"posture": "lying", "x": 3.51, "y": -1.80, "yaw": 28}
-Current subtask: "idle"
-History: []
-
-## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
-Waypoints: [
-  id: 1, loc: (-0.49, 0.27), label: room
-  id: 2, loc: (1.7, -0.58), label: room
-  id: 3, loc: (3.44, -1.95), label: room
-  id: 4, loc: (2.9, -4.44), label: hallway
-]
-
-## OUTPUT
-["Go to way point 1", "Find an apple", "Take a picture of the apple"]
-```
-
-# EXAMPLE 2
-```
-## USER INSTRUCTION
-Go to the other side of the room and find an apple and take a picture of it.
-
-## ROBOT STATE
-State: {"posture": "moving", "x": 3.51, "y": -1.80, "yaw": 28}
-Current subtask: "Go to way point 1"
-History: []
-
-## SCENE DESCRIPTION
-Objects: {
-    "chair": {"x": 0.25, "y": 0.53, "size": (0.20, 0.51), "dist": 1.82}
-}
-Waypoints: [
-  id: 1, loc: (-0.49, 0.27), label: room
-  id: 2, loc: (1.7, -0.58), label: room
-  id: 3, loc: (3.44, -1.95), label: room
-  id: 4, loc: (2.9, -4.44), label: hallway
-]
-
-## OUTPUT
-["Find an apple", "Take a picture of the apple"]
-```
-
-# EXAMPLE 3
-```
-## USER INSTRUCTION
-Play with the person.
-
-## ROBOT STATE
-State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 29}
-Current subtask: "idle()"
-History: [{"time": "14:16:08", "action": "stand_up()", "result": "success"}]
-
-## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "chair": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
-
-## OUTPUT
-goto_obj("person")
-```
-
-# EXAMPLE 4
-```
-## USER INSTRUCTION
-Find an apple.
-
-## ROBOT STATE
-State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 31}
-Current subtask: "goto_obj('person')"
-History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
-]
-
-## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "ball": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
-
-## OUTPUT
-done(False)
-```
-
-# EXAMPLE 5
-```
-## USER INSTRUCTION
-Go to location (1.50, 2.30).
-
-## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current subtask: "idle()"
-History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
-]
-
-## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
-
-## OUTPUT
-goto(1.50, 2.30)
-```
-
-# EXAMPLE 6
-```
 ## USER INSTRUCTION
 None
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current subtask: "idle()"
-History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+State: {"time": "12:10:45", "posture": "moving", "waypoint_id": 1}
+
+Instruction History: [
+	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
+	{"start": "12:09:15", "end": "N/A", "inst": "Go to the other side of the room and find an apple and take a picture of it.", "status": "in_progress"}
+]
+
+Current Plan: [
+	{"substask": "Get up", "status": "success"},
+	{"substask": "Go to waypoint 1", "status": "success"},
+	{"substask": "Find the apple", "status": "in_progress"},
+	{"substask": "Take a picture of the apple", "status": "pending"}
 ]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+	{"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+	{"name": "table", "x": 0.12, "y": 0.34, "size": [0.77, 0.34], "dist": 1.23},
+	{"name": "tv", "x": 0.43, "y": 0.42, "size": [0.32, 0.23], "dist": 0.99}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
+	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"}
+]
 
 ## OUTPUT
-keep()
-```
+{
+    "reason": "The currently in-progress task is to go to the other side of the room and find an apple. The exeuction of current plan for the task is normal. No new user instruction is provided. The robot should continue with the current plan.",
+    "interrupt_current_task": false,
+    "new_plan": []
+}
 
 
-# EXAMPLE 7
-```
+# EXAMPLE 2
 ## USER INSTRUCTION
-Get closer to the person.
+Explore the hallway and go back to the room.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current subtask: "idle()"
-History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+State: {"time": "12:12:52", "posture": "standing", "waypoint_id": 1}
+
+Instruction History: [
+	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
+	{"start": "12:09:15", "end": "12:12:12", "inst": "Go to the other side of the room and find an apple and take a picture of it.", "status": "success"}
 ]
 
+Current Plan: []
+
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 1.22}
-}
+Objects: [
+	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
+	{"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
+	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 5, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 6, "loc": [-1.34, -2.51], "label": "hallway"}
+]
 
 ## OUTPUT
-move(0.60, 0.0)
-```
+{
+    "reason": "A new user instruction is provided to explore the hallway and go back to the room. There is no currenly in-progress task and plan. I will create a new plan to explore the hallway and return to the room.",
+    "interrupt_current_task": false,
+    "new_plan": ["Go to waypoint 4, 5, and 6.", "Return to waypoint 1"]
+}

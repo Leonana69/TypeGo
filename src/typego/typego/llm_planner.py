@@ -41,7 +41,7 @@ class LLMPlanner():
     def set_robot(self, robot: RobotWrapper):
         self.robot = robot
 
-    def s1_plan(self, instruction: str):
+    def s1_plan(self):
         robot_skills = ""
 
         robot_skills += f"#### Low-level skills\n"
@@ -53,26 +53,29 @@ class LLMPlanner():
         prompt = self.s1_prompt.format(user_guidelines=self.s1_user_guidelines,
                                             robot_skills=robot_skills,
                                             example_plans=self.s1_examples,
-                                            s1_instruction=instruction,
+                                            subtask=instruction,
                                             robot_state=self.robot.get_state(),
                                             scene_description=self.robot.get_obj_list_str() + "\n")
 
         return self.llm.request(prompt, self.model_type, stream=False)
     
-    def s2_plan(self, instruction: str):
-        scene_description = self.robot.get_obj_list_str() + "\n"
-        scene_description += self.robot.observation.slam_map.get_waypoint_list_str()
+    def s2_plan(self, inst: str | None) -> str:
+        scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
+        scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
+
+        state = "State: " + self.robot.get_state() + "\n\n"
+        state += "Instruction History: " + self.robot.memory.get_history_inst_str() + "\n\n"
+        state += "Current Plan: " + self.robot.memory.get_current_plan_str() + "\n\n"
 
         prompt = self.s2_prompt.format(user_guidelines=self.s2_user_guidelines,
                                             example_plans=self.s2_examples,
-                                            user_instruction=instruction,
-                                            robot_state=self.robot.get_state(),
+                                            user_instruction=inst if inst else "None",
+                                            robot_state=state,
                                             scene_description=scene_description)
 
         print_t(f"[P] Execution request: {prompt}")
-        # return self.llm.request(prompt, self.model_type, stream=False)
-        return "keep()"
-    
+        return self.llm.request(prompt, self.model_type, stream=False)
+
     def probe(self, query: str) -> str:
         prompt = self.prompt_probe.format(scene_description=self.robot.get_obj_list_str(), query=query)
         print_t(f"[P] Execution request: {query}")

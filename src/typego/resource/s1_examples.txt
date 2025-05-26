@@ -1,150 +1,146 @@
 # EXAMPLE 1
-```
-## SYSTEM1 INSTRUCTION
+## SUBTASK
 Play with the person.
 
 ## ROBOT STATE
-State: {"posture": "lying", "x": 1.51, "y": 0.50, "yaw": 28}
-Current action: "idle()"
-History: []
+State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 1}
+
+Action History: []
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
 stand_up()
-```
+
 
 # EXAMPLE 2
-```
-## SYSTEM1 INSTRUCTION
+## SUBTASK
 Play with the person.
 
 ## ROBOT STATE
-State: {"posture": "lying", "x": 1.52, "y": 0.53, "yaw": 29}
-Current action: "stand_up()"
-History: []
+State: {"time": "14:16:00", "posture": "lying", "waypoint_id": 1}
+
+Action History: [
+    {"start": "14:15:53", "end": "N/A", "action": "stand_up()", "status": "in_progress"},
+]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
 keep()
-```
+
 
 # EXAMPLE 3
-```
-## SYSTEM1 INSTRUCTION
+## SUBTASK
 Play with the person.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 29}
-Current action: "idle()"
-History: [{"time": "14:16:08", "action": "stand_up()", "result": "success"}]
+State: {"time": "15:18:08", "posture": "standing", "waypoint_id": 1}
+
+Action History: [
+    {"start": "14:15:53", "end": "14:15:59", "action": "stand_up()", "status": "success"}
+]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "chair": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "chair", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
 goto_obj("person")
-```
+
 
 # EXAMPLE 4
-```
-## SYSTEM1 INSTRUCTION
-Find an apple.
+## SUBTASK
+Go to waypoint 6.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.52, "y": 0.53, "yaw": 31}
-Current action: "goto_obj('person')"
-History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+State: {"time": "14:17:55", "posture": "standing", "waypoint_id": 2}
+
+Action History: [
+    {"start": "14:15:53", "end": "14:15:59", "action": "stand_up()", "status": "success"},
+    {"start": "14:16:42", "end": "14:17:46", "action": "goto_waypoint(6)", "status": "failed"}
 ]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "ball": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "ball", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
-done(False)
-```
+goto_waypoint(6)
+
 
 # EXAMPLE 5
-```
-## SYSTEM1 INSTRUCTION
-Go to location (1.50, 2.30).
+## SUBTASK
+Find the apple.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current action: "idle()"
+State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
+
 History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"}
 ]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.55, "y": 0.63, "size": (0.40, 0.73), "dist": 2.82},
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
-goto(1.50, 2.30)
-```
+goto_obj("apple")
+
 
 # EXAMPLE 6
-```
-## SYSTEM1 INSTRUCTION
-None
+## SUBTASK
+Find the apple.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current action: "idle()"
+State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
+
 History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"},
+    {"start": "14:19:20", "end": "N/A", "action": "goto_obj('apple')", "status": "in_progress"}
 ]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "apple": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 0.62}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
 keep()
-```
 
 
 # EXAMPLE 7
-```
-## SYSTEM1 INSTRUCTION
-Get closer to the person.
+## SUBTASK
+Find the apple.
 
 ## ROBOT STATE
-State: {"posture": "standing", "x": 1.48, "y": 2.40, "yaw": 70}
-Current action: "idle()"
+State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
+
 History: [
-    {"time": "14:16:08", "action": "goto_obj('person')", "result": "success"},
-    {"time": "14:16:42", "action": "scan('apple')", "result": "failed"}
+    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"},
+    {"start": "14:19:20", "end": "14:20:10", "action": "goto_obj('apple')", "status": "success"}
 ]
 
 ## SCENE DESCRIPTION
-Objects: {
-    "person": {"x": 0.29, "y": 0.52, "size": (0.11, 0.22), "dist": 1.22}
-}
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
 
 ## OUTPUT
-move(0.60, 0.0)
-```
+done(True)
