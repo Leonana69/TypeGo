@@ -288,7 +288,7 @@ class Go2Wrapper(RobotWrapper):
             return
         elif action == "stop_action()":
             self.stop_action()
-            self.memory.get_subtask().append_action("stop_action()")
+            self.memory.execute_action("stop_action()")
             return
         elif action == "done(True)":
             self.memory.end_subtask(True)

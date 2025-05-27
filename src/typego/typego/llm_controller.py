@@ -86,7 +86,7 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def s1_loop(self, rate: float = 0.5):
+    def s1_loop(self, rate: float = 0.2):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)

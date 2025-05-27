@@ -64,11 +64,13 @@ class LLMPlanner():
                                             robot_state=state,
                                             scene_description=self.robot.get_obj_list_str() + "\n")
 
-        print_t(f"[S1] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        # print_t(f"[S1] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        ret = self.llm.request(prompt, self.model_type, stream=False)
         with open(CHAT_LOG_DIR + "s1_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
-        return self.llm.request(prompt, self.model_type, stream=False)
+        return ret
 
     def s2_plan(self, inst: str | None) -> str:
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
@@ -84,11 +86,13 @@ class LLMPlanner():
                                             robot_state=state,
                                             scene_description=scene_description)
 
-        print_t(f"[S2] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        # print_t(f"[S2] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        ret = self.llm.request(prompt, self.model_type, stream=False)
         with open(CHAT_LOG_DIR + "s2_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
-        return self.llm.request(prompt, self.model_type, stream=False)
+        return ret
 
     def probe(self, query: str) -> str:
         prompt = self.prompt_probe.format(scene_description=self.robot.get_obj_list_str(), query=query)

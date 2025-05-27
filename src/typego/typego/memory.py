@@ -47,9 +47,17 @@ class SubtaskItem:
         action.end = time.time()
         action.status = STATUS_SUCCESS if result else STATUS_FAILED
 
-    def append_action(self, action: str):
+    def execute_action(self, action: str):
         action_item = ActionItem(start=time.time(), end=0.0, content=action, status=STATUS_IN_PROGRESS)
         self.actions.append(action_item)
+
+    def get_in_progress_action(self) -> ActionItem | None:
+        if not self.actions:
+            return None
+        for action in self.actions:
+            if action.status == STATUS_IN_PROGRESS:
+                return action
+        return None
 
     def _sim(self) -> dict:
         js = {
@@ -99,8 +107,12 @@ class InstructionItem:
     def is_idle(self) -> bool:
         return self.content == "Idle"
 
-    def set_plan(self, plan: list[str]):
-        self.plan = [SubtaskItem(start=0.0, end=0.0, content=subtask, actions=[], status=STATUS_PENDING) for subtask in plan]
+    def set_plan(self, plan: list[str], interrupt: bool = False):
+        new_plan = [SubtaskItem(start=0.0, end=0.0, content=subtask, actions=[], status=STATUS_PENDING) for subtask in plan]
+        if interrupt:
+            self.plan = new_plan
+        else:
+            self.plan.extend(new_plan)
 
     def get_latest_subtask(self) -> SubtaskItem | None:
         for subtask in self.plan:
@@ -161,6 +173,8 @@ class RobotMemory:
             status=STATUS_IN_PROGRESS
         )
 
+        self.in_progress_action: Optional[ActionItem] = None
+
     def get_history_inst_str(self) -> str:
         rslt = "["
         in_progress = False
@@ -183,8 +197,11 @@ class RobotMemory:
     def get_history_action_str(self) -> str:
         subt = self.get_subtask()
         rslt = "["
-        for a in subt.actions if subt else self.default_subtask.actions:
+        for a in subt.actions:
             rslt += str(a._full())
+
+        if len(subt.actions) == 0 and self.in_progress_action:
+            rslt += str(self.in_progress_action._full())
         rslt += "]"
         return rslt
 
@@ -205,7 +222,8 @@ class RobotMemory:
 
         js = json.loads(response)
         interrupt = js.get('interrupt_current_task', False)
-        self.current_inst.set_plan(js['new_plan'])
+        print(f"[Memory] Processing S2 response: {self.current_inst.content}, {self.current_inst.plan}")
+        self.current_inst.set_plan(js['new_plan'], interrupt)
 
     def get_subtask(self) -> SubtaskItem:
         subt = self.current_inst.get_latest_subtask()
@@ -215,3 +233,10 @@ class RobotMemory:
         self.current_inst.finish_subtask(result)
         if self.current_inst.is_finished():
             self.current_inst = InstructionItem.idle()
+
+    def execute_action(self, action: str):
+        self.get_subtask().execute_action(action)
+        self.in_progress_action = self.get_subtask().get_in_progress_action()
+
+    def finish_action(self, result: bool):
+        self.get_subtask().finish_action(result)

@@ -16,7 +16,8 @@ Return a json object with the following fields:
 # GUIDELINES
 ## SYSTEM GUIDELINES
 1. The output plan should consider carefully the current context, including the user instruction, robot state, and scene description.
-2. If the robot's currently in-progress task is "Idle", you can randomly generate some interesting subtasks according to the user guidelines. Otherwise, stick to the current task.
+2. If the robot's currently in-progress task is "Idle" and without any ongoing subtasks, you can randomly generate some interesting subtasks according to the user guidelines. Otherwise, stick to the current task.
+3. The "Idle" task should be interrupted only if a new user instruction is provided.
 
 {user_guidelines}
 
