@@ -36,8 +36,8 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
-        # self.s1_loop_thread.start()
+        self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        self.s1_loop_thread.start()
 
         self.s2_loop_thread = threading.Thread(target=self.s2_loop)
         self.s2_loop_thread.start()
@@ -86,23 +86,16 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def s1_loop(self, rate: float = 1.0):
+    def s1_loop(self, rate: float = 0.5):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
         time.sleep(1.0)
         print_t(f"[C] Starting continuous planning...")
-        current_subtask = "None"
         while self.running:
             start_time = time.time()
-            try:
-                current_subtask = self.subtask_queue.get_nowait()
-            except queue.Empty:
-                pass
-            self.robot.memory.current_task = current_subtask
-            plan = self.planner.s1_plan(current_subtask)
-            if self.robot.append_action(current_subtask, plan):
-                current_subtask = "None"
+            plan = self.planner.s1_plan()
+            self.robot.append_action(plan)
             print_t(f"[C] Plan: {plan}")
             
             elapsed = time.time() - start_time

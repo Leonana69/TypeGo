@@ -280,25 +280,24 @@ class Go2Wrapper(RobotWrapper):
 
         self._send_control(control)
 
-    def append_action(self, inst: str, action: str) -> bool:
+    def append_action(self, action: str):
         """
         Appends an action to the execution queue.
         """
         if action == "keep()":
-            return False
+            return
         elif action == "stop_action()":
             self.stop_action()
-            self.memory.add_action("stop_action()", True)
-            return False
+            self.memory.get_subtask().append_action("stop_action()")
+            return
         elif action == "done(True)":
-            self.memory.add_subtask(inst, True)
-            return True
+            self.memory.end_subtask(True)
+            return
         elif action == "done(False)":
-            self.memory.add_subtask(inst, False)
-            return True
+            self.memory.end_subtask(False)
+            return
 
         self.execution_queue.put(action)
-        return False
 
     def worker(self):
         while self.running:

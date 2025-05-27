@@ -7,6 +7,8 @@ from typego.robot_wrapper import RobotWrapper
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
 
+CHAT_LOG_DIR = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/"
+
 class LLMPlanner():
     def __init__(self, model_type: ModelType = ModelType.GPT4O):
         self.llm = LLMWrapper()
@@ -50,15 +52,24 @@ class LLMPlanner():
             robot_skills += f"\n#### High-level skills\n"
             robot_skills += str(self.robot.hl_skillset)
 
+        state = "State: " + self.robot.get_state() + "\n\n"
+        state += "Action History: " + self.robot.memory.get_history_action_str() + "\n\n"
+
+        subtask = self.robot.memory.get_subtask().content
+
         prompt = self.s1_prompt.format(user_guidelines=self.s1_user_guidelines,
                                             robot_skills=robot_skills,
                                             example_plans=self.s1_examples,
-                                            subtask=instruction,
-                                            robot_state=self.robot.get_state(),
+                                            subtask=subtask,
+                                            robot_state=state,
                                             scene_description=self.robot.get_obj_list_str() + "\n")
 
+        print_t(f"[S1] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        with open(CHAT_LOG_DIR + "s1_log.txt", "a") as f:
+            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            f.write(remove_leading_prompt + "\n---\n")
         return self.llm.request(prompt, self.model_type, stream=False)
-    
+
     def s2_plan(self, inst: str | None) -> str:
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
@@ -73,7 +84,10 @@ class LLMPlanner():
                                             robot_state=state,
                                             scene_description=scene_description)
 
-        print_t(f"[P] Execution request: {prompt}")
+        print_t(f"[S2] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+        with open(CHAT_LOG_DIR + "s2_log.txt", "a") as f:
+            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            f.write(remove_leading_prompt + "\n---\n")
         return self.llm.request(prompt, self.model_type, stream=False)
 
     def probe(self, query: str) -> str:

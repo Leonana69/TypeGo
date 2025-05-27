@@ -74,7 +74,7 @@ class TypeFly:
         elif len(message) == 0:
             return gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
         else:
-            self.llm_controller.handle_task(message)
+            self.llm_controller.user_instruction(message)
             return gr.ChatMessage(role="assistant", content="Okay! Working on it...")
 
     def stream_from_queue(self):

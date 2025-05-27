@@ -153,7 +153,13 @@ class RobotMemory:
         self.robot_info = robot_info
         self.history_inst: list[InstructionItem] = []
         self.current_inst: InstructionItem = InstructionItem.idle()
-        self.current_subtask: Optional[SubtaskItem] = None
+        self.default_subtask: SubtaskItem = SubtaskItem(
+            start=0.0,
+            end=0.0,
+            content="None",
+            actions=[],
+            status=STATUS_IN_PROGRESS
+        )
 
     def get_history_inst_str(self) -> str:
         rslt = "["
@@ -174,27 +180,19 @@ class RobotMemory:
         rslt += "]"
         return rslt
 
-    # def get_current_subtask_str(self) -> str:
-    #     if self.current_inst is None or self.current_subtask is None:
-    #         return "None"
-    #     start = time.strftime("%H:%M:%S", time.localtime(self.current_subtask.start))
-    #     if self.current_subtask.end > 0:
-    #         end = time.strftime("%H:%M:%S", time.localtime(self.current_subtask.end))
-    #     else:
-    #         end = "N/A"
-    #     js = {
-    #         "start": start,
-    #         "end": end,
-    #         "subtask": self.current_subtask.content,
-    #         "status": self.current_subtask.status
-    #     }
-    #     return f"{js}\n"
+    def get_history_action_str(self) -> str:
+        subt = self.get_subtask()
+        rslt = "["
+        for a in subt.actions if subt else self.default_subtask.actions:
+            rslt += str(a._full())
+        rslt += "]"
+        return rslt
 
     def new_instruction(self, inst: str | None):
         if inst:
             self.history_inst.append(InstructionItem.new(inst))
 
-        if self.current_inst is None:
+        if self.current_inst.is_idle():
             for item in self.history_inst:
                 if not item.is_finished():
                     self.current_inst = item
@@ -209,16 +207,11 @@ class RobotMemory:
         interrupt = js.get('interrupt_current_task', False)
         self.current_inst.set_plan(js['new_plan'])
 
-    def get_subtask(self) -> Optional[SubtaskItem]:
-        if self.current_inst is None:
-            print("No current instruction to get subtask from.")
-            return None
-        return self.current_inst.get_latest_subtask()
-    
+    def get_subtask(self) -> SubtaskItem:
+        subt = self.current_inst.get_latest_subtask()
+        return subt if subt else self.default_subtask
+
     def end_subtask(self, result: bool):
-        if self.current_inst is None or self.current_subtask is None:
-            print("No current instruction or subtask to end.")
-            return
         self.current_inst.finish_subtask(result)
         if self.current_inst.is_finished():
             self.current_inst = InstructionItem.idle()

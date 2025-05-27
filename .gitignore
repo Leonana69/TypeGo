@@ -4,6 +4,6 @@ log/
 test/
 
 __pycache__/
-chat_log.txt
+*_log.txt
 *.pt
 hyrch_serving_*
