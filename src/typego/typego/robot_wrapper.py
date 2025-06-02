@@ -7,6 +7,7 @@ from PIL import Image
 import asyncio, cv2
 import re
 import numpy as np
+from collections import deque
 
 from typego.skillset import SkillSet
 from typego.robot_info import RobotInfo
@@ -30,6 +31,9 @@ class SLAMMap:
 
         self.waypoints: Optional[WayPointArray] = None
 
+        # Stores (timestamp, (x, y)) tuples for up to 60 seconds
+        self.trajectory = deque()  # type: deque[tuple[float, tuple[float, float]]]
+
     def update_map(self, map_data: ndarray, width: int, height: int, origin: tuple[float, float], resolution: float):
         self.map_data = map_data
         self.width = width
@@ -43,6 +47,12 @@ class SLAMMap:
     def update_robot_state(self, robot_loc: tuple[float, float], robot_yaw: float):
         self.robot_loc = robot_loc
         self.robot_yaw = robot_yaw
+        now = time.time()
+
+        self.trajectory.append((now, robot_loc))
+        # Remove points older than 60 seconds
+        while self.trajectory and now - self.trajectory[0][0] > 60:
+            self.trajectory.popleft()
 
     def get_waypoint(self, id: int) -> Optional[WayPoint]:
         if self.waypoints is None:
@@ -90,9 +100,33 @@ class SLAMMap:
         map_image = cv2.flip(map_image, 0)
         map_image = cv2.cvtColor(map_image, cv2.COLOR_GRAY2BGR)
 
-        cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
-        cv2.arrowedLine(map_image, (u, v), (int(u + 10 * np.cos(self.robot_yaw)), int(v - 10 * np.sin(self.robot_yaw))), (255, 0, 0), 1)
+        # Draw trajectory
+        now = time.time()
+        trajectory_copy = list(self.trajectory)
+        for i in range(1, len(trajectory_copy)):
+            t0, p0 = trajectory_copy[i - 1]
+            t1, p1 = trajectory_copy[i]
+            age = (now - t0) / 60.0  # normalized age [0, 1]
+            age = min(max(age, 0.0), 1.0)
 
+            # Color fades from green (0,255,0) to red (0,0,255)
+            color = (
+                int(0 * (1 - age) + 0 * age),  # Blue channel (0)
+                int(255 * (1 - age)),          # Green channel
+                int(255 * age)                 # Red channel
+            )
+
+            u0 = int((p0[0] - self.origin[0]) / self.resolution)
+            v0 = self.height - int((p0[1] - self.origin[1]) / self.resolution)
+            u1 = int((p1[0] - self.origin[0]) / self.resolution)
+            v1 = self.height - int((p1[1] - self.origin[1]) / self.resolution)
+            cv2.line(map_image, (u0, v0), (u1, v1), color, 2)
+
+        # Draw robot position and orientation
+        cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
+        cv2.arrowedLine(map_image, (u, v), (int(u + 10 * np.cos(self.robot_yaw)), int(v - 10 * np.sin(self.robot_yaw))), (0, 255, 0), 1)
+
+        # Draw waypoints
         if self.waypoints is not None:
             for waypoint in self.waypoints.waypoints:
                 u = int((waypoint.x - self.origin[0]) / self.resolution)
