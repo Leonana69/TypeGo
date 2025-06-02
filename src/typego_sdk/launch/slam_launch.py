@@ -3,7 +3,7 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 
 import os
 
@@ -39,13 +39,11 @@ def generate_launch_description():
     slam_config_path = PathJoinSubstitution([pkg_typego_sdk, 'config', slam_params_file])
     rviz_config_path = PathJoinSubstitution([pkg_typego_sdk, 'rviz_config', 'slam.rviz'])
 
-    slam_params = {}
-    if IfCondition(use_existing_map):
-        resource_dir = os.getenv('RESOURCE_DIR', '/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource/')
-        slam_params = {
-            'map_file_name': os.path.join(resource_dir, 'yecl-lab'),
-            'map_start_pose': [0.5, 0.3, 0.0]
-        }
+    resource_dir = os.getenv('RESOURCE_DIR', '/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource/')
+    map_params = {
+        'map_file_name': os.path.join(resource_dir, '2nd-floor'),
+        'map_start_pose': [0.1, -0.5, 0.0]
+    }
 
     return LaunchDescription(ARGUMENTS + [
         Node(
@@ -53,13 +51,18 @@ def generate_launch_description():
             executable='async_slam_toolbox_node',
             name='slam_toolbox',
             output='screen',
-            parameters=[
-                slam_config_path,
-                slam_params
-            ],
-            remappings=[
-                ('/scan', '/scan')
-            ]
+            parameters=[slam_config_path, map_params],
+            remappings=[('/scan', '/scan')],
+            condition=IfCondition(use_existing_map)
+        ),
+        Node(
+            package='slam_toolbox',
+            executable='async_slam_toolbox_node',
+            name='slam_toolbox',
+            output='screen',
+            parameters=[slam_config_path],
+            remappings=[('/scan', '/scan')],
+            condition=UnlessCondition(use_existing_map)
         ),
         Node(
             package='rviz2',

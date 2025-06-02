@@ -45,5 +45,5 @@ COPY ../src /workspace/src
 WORKDIR /workspace
 
 RUN /bin/bash -c "source /opt/ros/$ROS_DISTRO/setup.bash && cd /workspace && colcon build"
-RUN chmod +x /workspace/src/typego_sdk/scripts/run.sh
+RUN chmod +x /workspace/src/typego_sdk/scripts/*.sh
 CMD ["bash", "-c", "/workspace/src/typego_sdk/scripts/run.sh"]

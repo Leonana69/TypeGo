@@ -58,6 +58,9 @@ class SubtaskItem:
             if action.status == STATUS_IN_PROGRESS:
                 return action
         return None
+    
+    def is_finished(self) -> bool:
+        return self.status in (STATUS_SUCCESS, STATUS_FAILED)
 
     def _sim(self) -> dict:
         js = {
@@ -133,7 +136,8 @@ class InstructionItem:
             subtask.end = time.time()
             subtask.status = STATUS_SUCCESS if result else STATUS_FAILED
 
-        if all(subtask.status != STATUS_IN_PROGRESS for subtask in self.plan):
+        # Check if all subtasks are finished
+        if all(subtask.is_finished() for subtask in self.plan):
             self.end = time.time()
             # TODO: maybe different status for the instruction itself
             self.status = STATUS_SUCCESS if result else STATUS_FAILED

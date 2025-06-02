@@ -43,4 +43,9 @@ run_slam:
 	ros2 launch typego slam_sync.launch.py rviz:=true
 
 save_map:
-	ros2 service call /slam_toolbox/serialize_map slam_toolbox/SerializePoseGraph "{filename: '/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/yecl-lab'}"
+	ros2 service call /slam_toolbox/serialize_map slam_toolbox/SerializePoseGraph "{filename: '/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource/2nd-floor'}"
+
+clog:
+	echo -n > ./src/typego/resource/s1_log.txt
+	echo -n > ./src/typego/resource/s2_log.txt
+	echo -n > ./src/typego/resource/chat_log.txt
