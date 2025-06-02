@@ -43,7 +43,15 @@ run_slam:
 	ros2 launch typego slam_sync.launch.py rviz:=true
 
 save_map:
-	ros2 service call /slam_toolbox/serialize_map slam_toolbox/SerializePoseGraph "{filename: '/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource/2nd-floor'}"
+	@echo "=> Saving map..."
+	@{ \
+        if [ -z "$(FILE)" ]; then \
+            echo "Error: FILE variable is not set. Please set FILE to the desired filename."; \
+            exit 1; \
+        fi; \
+        echo '$(FILE)'; \
+    }
+	ros2 service call /slam_toolbox/serialize_map slam_toolbox/SerializePoseGraph "{filename: '$(CURDIR)/src/typego_sdk/resource/$(FILE)'}"
 
 clog:
 	echo -n > ./src/typego/resource/s1_log.txt
