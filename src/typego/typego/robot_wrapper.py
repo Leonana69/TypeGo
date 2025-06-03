@@ -111,9 +111,9 @@ class SLAMMap:
 
             # Color fades from green (0,255,0) to red (0,0,255)
             color = (
-                int(0 * (1 - age) + 0 * age),  # Blue channel (0)
-                int(255 * (1 - age)),          # Green channel
-                int(255 * age)                 # Red channel
+                int(0),                 # Blue
+                int(255 * (1 - age)),   # Green
+                int(255 * age)          # Red
             )
 
             u0 = int((p0[0] - self.origin[0]) / self.resolution)
