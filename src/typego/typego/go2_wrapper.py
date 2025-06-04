@@ -13,6 +13,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import Image as ROSImage
+from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
@@ -54,12 +55,11 @@ class Go2Observation(RobotObservation):
         self.image_receover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.init_ros_obs(node)
 
+    def init_ros_obs(self, node: Node):
         self.map2odom_translation = np.array([0.0, 0.0, 0.0])
         self.map2odom_rotation = np.array([0.0, 0.0, 0.0, 1.0])
         self.odom2robot_translation = np.array([0.0, 0.0, 0.0])
         self.odom2robot_rotation = np.array([0.0, 0.0, 0.0, 1.0])
-
-    def init_ros_obs(self, node: Node):
         # Subscribe to /camera/image_raw
         node.create_subscription(
             ROSImage,
@@ -90,6 +90,16 @@ class Go2Observation(RobotObservation):
             self._waypoint_callback,
             10
         )
+
+        # Subscribe to /scan
+        node.create_subscription(
+            LaserScan,
+            '/scan',
+            self._scan_callback,
+            10
+        )
+
+        self.closest_object: tuple[float, float] = (float('inf'), 0.0)  # (distance, angle)
 
     def _image_callback(self, msg: ROSImage):
         # Convert ROS Image message to OpenCV image
@@ -138,21 +148,72 @@ class Go2Observation(RobotObservation):
         width = msg.info.width
         height = msg.info.height
         data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-
-        # Convert OccupancyGrid to grayscale image
-        # map_data = np.zeros((height, width), dtype=np.uint8)
-        # map_data[data == 0] = 255      # Free space = white
-        # map_data[data == -1] = 128     # Unknown = gray
-        # map_data[data > 0] = 0         # Occupied = black
-        # map_data = cv2.flip(map_data, 0)
-
-        # # Convert to Colored map_data
-        # map_data = cv2.cvtColor(map_data, cv2.COLOR_GRAY2BGR)
         self.slam_map.update_map(data, width, height, (msg.info.origin.position.x, msg.info.origin.position.y), msg.info.resolution)
         # print_t(f"[Go2] Map size: {width}x{height}, Resolution: {msg.info.resolution}")
 
     def _waypoint_callback(self, msg: WayPointArray):
         self.slam_map.update_waypoints(msg)
+
+    def _scan_callback(self, msg: LaserScan):
+        # Parameters with small epsilon to avoid numerical issues
+        max_distance = 1.0
+        min_object_width = 0.15  # 15cm
+        min_object_angular_width = 0.35  # 20 degrees
+        min_valid_distance = 0.001  # 1mm - ignore values below this
+        angle_increment = msg.angle_increment
+        
+        min_distance = float('inf')
+        best_object = None
+        
+        current_cluster = []
+        
+        # Helper function to process a cluster
+        def process_cluster(cluster):
+            nonlocal min_distance, best_object
+            if not cluster:
+                return
+                
+            # Extract just the distances from the cluster (index, distance) tuples
+            cluster_distances = [d for (_, d) in cluster if d >= min_valid_distance]
+            if not cluster_distances:
+                return
+                
+            cluster_min_distance = min(cluster_distances)
+            angular_width = len(cluster) * angle_increment
+            physical_width = angular_width * cluster_min_distance
+
+            if (physical_width >= min_object_width or angular_width >= min_object_angular_width) and cluster_min_distance < min_distance:
+                min_distance = cluster_min_distance
+                midpoint_idx = cluster[0][0] + len(cluster)//2
+                best_object = {
+                    'distance': cluster_min_distance,
+                    'angle': msg.angle_min + midpoint_idx * angle_increment,
+                    'width': physical_width,
+                    'indices': (cluster[0][0], cluster[-1][0])
+                }
+        
+        # Main processing loop
+        for i, distance in enumerate(msg.ranges):
+            if min_valid_distance <= distance <= max_distance:
+                current_cluster.append((i, distance))
+            else:
+                process_cluster(current_cluster)
+                current_cluster = []
+        
+        # Process any remaining cluster at the end
+        process_cluster(current_cluster)
+        
+        # Output results
+        if best_object:
+            # print(
+            #     f"Closest valid object: distance={best_object['distance']:.2f}m, "
+            #     f"angle={math.degrees(best_object['angle']):.1f}°, "
+            #     f"width={best_object['width']:.2f}m"
+            # )
+            self.closest_object = (best_object['distance'], best_object['angle'])
+        else:
+            # print("No valid objects found within criteria")
+            self.closest_object = (float('inf'), 0.0)
         
     @overrides
     def _start(self):
