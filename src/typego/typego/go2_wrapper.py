@@ -170,6 +170,35 @@ class Go2Observation(RobotObservation):
     def fetch_processed_result(self) -> tuple[Image.Image, list]:
         return self.yolo_client.latest_result
 
+class Go2Action:
+    event: threading.Event = None
+    def __init__(self, actions: list[tuple[callable, float]]):
+        self.actions = actions  # List of tuples (function, duration)
+
+        if self.event is None:
+            raise ValueError("Go2Action event is not initialized. Please call Go2Wrapper.start() first.")
+    
+    def execute(self):
+        """
+        Execute actions at 10Hz, and check for stop events frequently.
+        """
+        for action, duration in self.actions:
+            if self.event.is_set():
+                print_t("[Go2] Action stopped.")
+                return
+
+            print_t(f"[Go2] Executing action: {action.__name__ if hasattr(action, '__name__') else action} for {duration:.2f}s")
+            action()
+
+            start_time = time.time()
+            while time.time() - start_time < duration:
+                if self.event.is_set():
+                    print_t("[Go2] Action interrupted during execution.")
+                    return
+                time.sleep(0.1)  # 10Hz = 0.1s interval
+
+        print_t("[Go2] Action execution completed.")
+
 class Go2Posture(Enum):
     STANDING = "standing"
     LYING = "lying"
@@ -207,6 +236,7 @@ class Go2Wrapper(RobotWrapper):
         self.execution_queue = queue.Queue()
         self.active_program = None
         self.stop_action_event = threading.Event()
+        Go2Action.event = self.stop_action_event
 
         extra = self.robot_info.extra
         if "url" not in extra:
@@ -224,6 +254,8 @@ class Go2Wrapper(RobotWrapper):
         self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
         self.ll_skillset.add_low_level_skill("stop_action", self.stop_action, "Stop current action")
         self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
+        self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
+        self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
 
         high_level_skills = [
             {
@@ -436,6 +468,32 @@ class Go2Wrapper(RobotWrapper):
         self.state["posture"] = Go2Posture.STANDING
         return True
     
+    def nod(self) -> bool:
+        """
+        Nods the robot's head.
+        """
+        print("-> Nod")
+        actions = []
+        for _ in range(2):  # 2 up/down cycles = 4 total motions
+            actions.append((lambda: self._action("euler", roll=0, pitch=-0.2, yaw=0), 0.5))
+            actions.append((lambda: self._action("euler", roll=0, pitch=0.0, yaw=0), 0.5))
+        go2_action = Go2Action(actions)
+        go2_action.execute()
+        return True
+    
+    def look_up(self) -> bool:
+        """
+        Looks up by adjusting the robot's head pitch.
+        """
+        print("-> Look up")
+        actions = [
+            (lambda: self._action("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
+            for _ in range(15)  # 3 up/down cycles
+        ]
+        go2_action = Go2Action(actions)
+        go2_action.execute()
+        return True
+    
     def goto_waypoint(self, id: int) -> bool:
         print(f"-> Go to waypoint {id}")
         wp = self.observation.slam_map.get_waypoint(id)
@@ -488,15 +546,6 @@ class Go2Wrapper(RobotWrapper):
 
         send_goal_future = self.navigate_client.send_goal_async(goal_msg)
         send_goal_future.add_done_callback(goal_response_callback)
-
-        # completed_in_time = done_event.wait(timeout=timeout_sec)
-        # if not completed_in_time:
-        #     print_t("Navigation: Timeout — cancelling goal...")
-        #     goal_handle = goal_handle_container.get("handle")
-        #     if goal_handle and goal_handle.accepted:
-        #         goal_handle.cancel_goal_async()
-        #     self.state["posture"] = Go2Posture.STANDING
-        #     return False
 
         start_time = time.time()
         while not done_event.is_set():

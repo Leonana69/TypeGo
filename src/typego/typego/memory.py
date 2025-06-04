@@ -8,6 +8,7 @@ STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
 STATUS_IN_PROGRESS = "in_progress"
 STATUS_PENDING = "pending"
+STATUS_PAUSED = "paused"
 
 def format_time(seconds: float) -> str:
     """Format seconds into a human-readable string."""

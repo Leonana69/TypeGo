@@ -14,21 +14,6 @@ class LLMPlanner():
         self.llm = LLMWrapper()
         self.model_type = model_type
 
-        # with open(os.path.join(CURRENT_DIR, f"./resource/s1_plan_prompt.txt"), "r") as f:
-        #     self.s1_plan_prompt = f.read()
-
-        # with open(os.path.join(CURRENT_DIR, f"./resource/s1_code_prompt.txt"), "r") as f:
-        #     self.s1_code_prompt = f.read()
-
-        # with open(os.path.join(CURRENT_DIR, f"./resource/s1_guidelines.txt"), "r") as f:
-        #     self.s1_guidelines = f.read()
-
-        # with open(os.path.join(CURRENT_DIR, f"./resource/s1_plan_examples.txt"), "r") as f:
-        #     self.s1_plan_examples = f.read()
-
-        # with open(os.path.join(CURRENT_DIR, f"./resource/s1_code_examples.txt"), "r") as f:
-        #     self.s1_code_examples = f.read()
-
         with open(os.path.join(CURRENT_DIR, f"./resource/prompt_probe.txt"), "r") as f:
             self.prompt_probe = f.read()
 

@@ -2,11 +2,13 @@
 
 build:
 	colcon build
-	if [ -f ./install/typego/lib/typego/webui ]; then \
-		sed -i '1s|^#!.*|#!'"$$(which python)"'|' ./install/typego/lib/typego/webui; \
-	else \
-		echo "Warning: ./install/typego/lib/typego/webui not found. Skipping shebang update."; \
-	fi
+	@{ \
+		if [ -f ./install/typego/lib/typego/webui ]; then \
+			sed -i '1s|^#!.*|#!'"$$(which python)"'|' ./install/typego/lib/typego/webui; \
+		else \
+			echo "Warning: ./install/typego/lib/typego/webui not found. Skipping shebang update."; \
+		fi \
+	}
 
 docker_stop:
 	@echo "=> Stopping go2-sdk..."
