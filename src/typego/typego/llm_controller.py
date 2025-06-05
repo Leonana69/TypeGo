@@ -25,8 +25,11 @@ class LLMController():
             self.probe
         ]
 
-        self.inst_queue = queue.Queue()
-        self.subtask_queue = queue.Queue()
+        self.s1_event = threading.Event()
+        self.s2_event = threading.Event()
+
+        self.s0_control = threading.Event()
+        self.s0_control.set()
 
         if robot_info.robot_type == "virtual":
             self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
@@ -41,6 +44,9 @@ class LLMController():
 
         self.s2_loop_thread = threading.Thread(target=self.s2_loop)
         self.s2_loop_thread.start()
+
+        # self.s0_loop_thread = threading.Thread(target=self.s0_loop)
+        # self.s0_loop_thread.start()
 
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
@@ -86,44 +92,80 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def s1_loop(self, rate: float = 1):
+    def s0_loop(self, rate: float = 20.0):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
         time.sleep(1.0)
-        print_t(f"[C] Starting continuous planning...")
+        print_t(f"[C] Starting S0...")
+
+        conditions = [
+            (5, lambda: self.robot.is_visible("person"), lambda: self.robot.look_up()),
+            (4, lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0)),
+        ]
+
+        while self.running:
+            for timeout, condition, action in conditions:
+                if condition():
+                    # block s1 and s2 loops
+                    self.s0_control.clear()
+                    print_t(f"[C] Get condition: {condition.__name__}...")
+                    # stop the current robot action
+
+                    # action()
+                    self.s0_control.set()
+            time.sleep(delay)
+
+    def s1_loop(self, rate: float = 1.0):
+        delay = 1 / rate
+        while not self.running:
+            time.sleep(0.1)
+        time.sleep(1.0)
+        print_t(f"[C] Starting S1...")
         while self.running:
             start_time = time.time()
             plan = self.planner.s1_plan()
-            self.robot.append_action(plan)
+
+            # pause if s0 is processing
+            if not self.s0_control.is_set():
+                print_t(f"[C] S0 is processing, waiting...")
+                self.s0_control.wait()
+
+            self.robot.append_actions(plan)
             print_t(f"[C] Plan: {plan}")
             
             elapsed = time.time() - start_time
             sleep_time = max(0, delay - elapsed)
-            time.sleep(sleep_time)
+            if sleep_time > 0:
+                self.s1_event.wait(timeout=sleep_time)
+            self.s1_event.clear()
 
     def s2_loop(self, rate: float = 0.2):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
         time.sleep(1.0)
-        print_t(f"[C] Starting continuous planning...")
+        print_t(f"[C] Starting S2...")
 
         while self.running:
             start_time = time.time()
-            new_inst = None
-            try:
-                new_inst = self.inst_queue.get_nowait()
-                self.robot.memory.new_instruction(new_inst)
-            except queue.Empty:
-                pass
-
-            plan = self.planner.s2_plan(new_inst)
+            plan = self.planner.s2_plan()
             print_t(f"[C] Plan: {plan}")
+
+            # pause if s0 is processing
+            if not self.s0_control.is_set():
+                print_t(f"[C] S0 is processing, waiting...")
+                self.s0_control.wait()
+
             self.robot.memory.process_s2_response(plan)
+
             elapsed = time.time() - start_time
             sleep_time = max(0, delay - elapsed)
-            time.sleep(sleep_time)
+            if sleep_time > 0:
+                self.s2_event.wait(timeout=sleep_time)
+            self.s2_event.clear()
 
     def user_instruction(self, inst: str):
-        self.inst_queue.put(inst)
+        self.robot.memory.add_inst(inst)
+        self.s1_event.set()  # Trigger the S1 loop to process the new instruction
+        self.s2_event.set()  # Trigger the S2 loop to process the new instruction

@@ -1,3 +1,2 @@
 ## USER GUIDELINES
-1. You should approach and look at the person if you see them.
-2. You should look at the sports ball if you don't have any other task.
+1. In Idle state, you can randomly generate some interesting actions like look up, look at interesting object, wandering around.

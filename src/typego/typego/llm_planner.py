@@ -38,14 +38,15 @@ class LLMPlanner():
             robot_skills += str(self.robot.hl_skillset)
 
         state = "State: " + self.robot.get_state() + "\n\n"
-        state += "Action History: " + self.robot.memory.get_history_action_str() + "\n\n"
+        state += "Plan for Current Instruction: " + self.robot.memory.get_current_plan_str() + "\n\n"
+        state += "Action History for Current Instruction: " + self.robot.memory.get_history_action_str() + "\n\n"
 
-        subtask = self.robot.memory.get_subtask().content
+        inst = self.robot.memory.get_current_inst_str()
 
         prompt = self.s1_prompt.format(user_guidelines=self.s1_user_guidelines,
                                             robot_skills=robot_skills,
                                             example_plans=self.s1_examples,
-                                            subtask=subtask,
+                                            instruction=inst,
                                             robot_state=state,
                                             scene_description=self.robot.get_obj_list_str() + "\n")
 
@@ -57,17 +58,20 @@ class LLMPlanner():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2_plan(self, inst: str | None) -> str:
+    def s2_plan(self) -> str:
+        inst = self.robot.memory.get_current_inst_str()
+
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
 
         state = "State: " + self.robot.get_state() + "\n\n"
-        state += "Instruction History: " + self.robot.memory.get_history_inst_str() + "\n\n"
-        state += "Current Plan: " + self.robot.memory.get_current_plan_str() + "\n\n"
+        state += "Instruction History: " + self.robot.memory.get_inst_list_str() + "\n\n"
+        state += "Plan for In-Progress Instruction: " + self.robot.memory.get_current_plan_str() + "\n\n"
+        state += "Action History for In-Progress Instruction: " + self.robot.memory.get_history_action_str() + "\n\n"
 
         prompt = self.s2_prompt.format(user_guidelines=self.s2_user_guidelines,
                                             example_plans=self.s2_examples,
-                                            user_instruction=inst if inst else "None",
+                                            user_instruction=inst,
                                             robot_state=state,
                                             scene_description=scene_description)
 

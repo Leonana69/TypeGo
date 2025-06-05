@@ -1,11 +1,26 @@
 # EXAMPLE 1
-## SUBTASK
-Play with the person.
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 1}
+State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
 
-Action History: []
+Plan for Current Instruction:
+```
+start_location = 1
+target_waypoints = [3, 8, 11, 12]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if see a person:
+		report("There is someone at waypoint " + str(waypoint))
+		break
+goto_waypoint(start_location)
+```
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
+]
 
 ## SCENE DESCRIPTION
 Objects: [
@@ -13,19 +28,43 @@ Objects: [
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
 ## OUTPUT
-stand_up()
+stop();log('I see a person on my way to waypoint 8.')
 
 
+------------
 # EXAMPLE 2
-## SUBTASK
-Play with the person.
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:16:00", "posture": "lying", "waypoint_id": 1}
+State: {"time": "14:16:12", "posture": "moving", "waypoint_id": 5}
 
-Action History: [
-    {"start": "14:15:53", "end": "N/A", "action": "stand_up()", "status": "in_progress"},
+Plan for Current Instruction:
+```
+start_location = 1
+target_waypoints = [3, 8, 11, 12]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if see a person:
+		report("There is someone around waypoint " + str(waypoint))
+		break
+goto_waypoint(start_location)
+```
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "stopped"},
+    {"start": "14:16:12", "end": "N/A", "action": "log('I see a person on my way to waypoint 8.')", "status": "success"}
 ]
 
 ## SCENE DESCRIPTION
@@ -34,113 +73,246 @@ Objects: [
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
 ## OUTPUT
-keep()
+goto_waypoint(1)
 
 
+------------
 # EXAMPLE 3
-## SUBTASK
-Play with the person.
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "15:18:08", "posture": "standing", "waypoint_id": 1}
+State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
 
-Action History: [
-    {"start": "14:15:53", "end": "14:15:59", "action": "stand_up()", "status": "success"}
+Plan for Current Instruction:
+```
+start_location = 1
+target_waypoints = [3, 8, 11, 12]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if see a person:
+		report("There is someone at waypoint " + str(waypoint))
+		break
+goto_waypoint(start_location)
+```
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "chair", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-## OUTPUT
-goto_obj("person")
-
-
-# EXAMPLE 4
-## SUBTASK
-Go to waypoint 6.
-
-## ROBOT STATE
-State: {"time": "14:17:55", "posture": "standing", "waypoint_id": 2}
-
-Action History: [
-    {"start": "14:15:53", "end": "14:15:59", "action": "stand_up()", "status": "success"},
-    {"start": "14:16:42", "end": "14:17:46", "action": "goto_waypoint(6)", "status": "failed"}
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "ball", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-## OUTPUT
-goto_waypoint(6)
-
-
-# EXAMPLE 5
-## SUBTASK
-Find the apple.
-
-## ROBOT STATE
-State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
-
-History: [
-    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"}
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
-## OUTPUT
-goto_obj("apple")
-
-
-# EXAMPLE 6
-## SUBTASK
-Find the apple.
-
-## ROBOT STATE
-State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
-
-History: [
-    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"},
-    {"start": "14:19:20", "end": "N/A", "action": "goto_obj('apple')", "status": "in_progress"}
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
 ]
 
 ## OUTPUT
 keep()
 
 
-# EXAMPLE 7
-## SUBTASK
-Find the apple.
+------------
+# EXAMPLE 4
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:19:43", "posture": "standing", "waypoint_id": 6}
+State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
 
-History: [
-    {"start": "14:19:08", "end": "14:19:40", "action": "scan('apple')", "status": "success"},
-    {"start": "14:19:20", "end": "14:20:10", "action": "goto_obj('apple')", "status": "success"}
+Plan for Current Instruction:
+```
+start_location = 1
+target_waypoints = [3, 8, 11, 12]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if see a person:
+		report("There is someone at waypoint " + str(waypoint))
+		break
+goto_waypoint(start_location)
+```
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "14:17:12", "action": "goto_waypoint(8)", "status": "success"},
+    {"start": "14:17:16", "end": "14:17:59", "action": "goto_waypoint(11)", "status": "success"},
+    {"start": "14:18:08", "end": "14:18:45", "action": "goto_waypoint(12)", "status": "success"},
+    {"start": "14:18:55", "end": "14:19:45", "action": "goto_waypoint(1)", "status": "success"},
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
 ]
 
 ## OUTPUT
 done(True)
+
+
+------------
+# EXAMPLE 5
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 3}
+
+Plan for Current Instruction: None
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
+]
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+goto_waypoint(3)
+
+
+------------
+# EXAMPLE 6
+## INSTRUCTION
+I'm hungry.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 3}
+
+Plan for Current Instruction: None
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
+]
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+goto_waypoint(2)
+
+
+------------
+# EXAMPLE 7
+## INSTRUCTION
+I'm hungry.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 3}
+
+Plan for Current Instruction:
+```
+target_waypoints = [1, 2]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if find some food around:
+		report("Found food at waypoint " + str(waypoint))
+		break
+```
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
+    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
+]
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+stop();goto_waypoint(1)
+
+
+------------
+# EXAMPLE 8
+## INSTRUCTION
+Idle
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "standing", "waypoint_id": 3}
+
+Plan for Current Instruction: None
+
+Action History for Current Instruction: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
+]
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+look_object("person")

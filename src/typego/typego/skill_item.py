@@ -39,6 +39,11 @@ class SkillItem(ABC):
     @abstractmethod
     def __repr__(self) -> str:
         pass
+
+    @abstractmethod
+    def _sim(self) -> str:
+        """Returns a string representation of the skill description."""
+        pass
     
     @abstractmethod
     def execute(self, arg_list: list[SKILL_ARG_TYPE]) -> SKILL_RET_TYPE:
@@ -90,6 +95,10 @@ class LowLevelSkillItem(SkillItem):
         return (f"{self._name}: "
                 f"args: {[arg for arg in self._args]}, "
                 f"description: {self._description}")
+    
+    def _sim(self) -> str:
+        """Returns a string representation of the skill description."""
+        return f"{self._name}: {self._description}"
 
 class HighLevelSkillItem(SkillItem):
     def __init__(self, name: str, abbr: str, definition: str, description: str, skill_set_list: list['SkillSet'] = None):
@@ -159,3 +168,7 @@ class HighLevelSkillItem(SkillItem):
                 f"definition: {self.definition}, "
                 f"args: {[arg for arg in self._args]}, "
                 f"description: {self._description}")
+    
+    def _sim(self) -> str:
+        """Returns a string representation of the skill description."""
+        return f"{self._name}: {self._description}"

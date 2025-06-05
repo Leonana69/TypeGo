@@ -214,6 +214,15 @@ class Go2Observation(RobotObservation):
         else:
             # print("No valid objects found within criteria")
             self.closest_object = (float('inf'), 0.0)
+
+    @overrides
+    def blocked(self) -> bool:
+        """
+        Check if the robot is blocked by an obstacle.
+        """
+        # If the closest object is within 0.4m and it's directly in front of the robot
+        distance, angle = self.closest_object
+        return distance < 0.4 and abs(angle) < math.radians(30)
         
     @overrides
     def _start(self):
@@ -373,25 +382,26 @@ class Go2Wrapper(RobotWrapper):
 
         self._send_control(control)
 
-    def append_action(self, action: str):
+    def append_actions(self, actions: str):
         """
         Appends an action to the execution queue.
         """
-        if action == "keep()":
-            return
-        elif action == "stop_action()":
-            self.memory.execute_action("stop_action()")
-            self.stop_action()
-            self.memory.finish_action(True)
-            return
-        elif action == "done(True)":
-            self.memory.end_subtask(True)
-            return
-        elif action == "done(False)":
-            self.memory.end_subtask(False)
-            return
-
-        self.execution_queue.put(action)
+        actions = actions.strip().split(';')
+        for action in actions:
+            action = action.strip()
+            if action == "keep()":
+                continue
+            elif action == "stop()":
+                self.memory.stop_action()
+                self.stop_action()
+                continue
+            elif action == "done(True)":
+                self.memory.end_inst(True)
+                continue
+            elif action == "done(False)":
+                self.memory.end_inst(False)
+                continue
+            self.execution_queue.put(action)
 
     def worker(self):
         while self.running:

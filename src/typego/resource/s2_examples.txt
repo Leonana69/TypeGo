@@ -1,20 +1,30 @@
 # EXAMPLE 1
 ## USER INSTRUCTION
-None
+Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
 State: {"time": "12:10:45", "posture": "moving", "waypoint_id": 1}
 
 Instruction History: [
 	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
-	{"start": "12:09:15", "end": "N/A", "inst": "Go to the other side of the room and find an apple and take a picture of it.", "status": "in_progress"}
+	{"start": "12:09:15", "end": "N/A", "inst": "Go around the hallway and check if there is anyone there. Then report back to me.", "status": "in_progress"}
 ]
 
-Current Plan: [
-	{"substask": "Get up", "status": "success"},
-	{"substask": "Go to waypoint 1", "status": "success"},
-	{"substask": "Find the apple", "status": "in_progress"},
-	{"substask": "Take a picture of the apple", "status": "pending"}
+Plan for In-Progress Instruction:
+```
+start_location = 1
+target_waypoints = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if see a person:
+		report("There is someone around waypoint " + str(waypoint))
+		break
+goto_waypoint(start_location)
+```
+
+Action History for In-Progress Instruction: [
+	{"start": "12:09:15", "end": "12:10:45", "action": "goto_waypoint(3)", "status": "success"},
+	{"start": "12:10:45", "end": "N/A", "action": "goto_waypoint(4)", "status": "in_progress"}
 ]
 
 ## SCENE DESCRIPTION
@@ -25,38 +35,49 @@ Objects: [
 ]
 
 Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
-	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"}
+    {"id": 0, "loc": [0.1, -2.0], "label": "room"},
+    {"id": 1, "loc": [-1.02, 0.68], "label": "room"},
+    {"id": 2, "loc": [-4.06, 0.64], "label": "hallway"},
+    {"id": 3, "loc": [-6.49, 0.01], "label": "hallway"},
+    {"id": 4, "loc": [-9.05, -0.49], "label": "hallway"},
+    {"id": 5, "loc": [-10.17, 1.88], "label": "hallway"},
+    {"id": 6, "loc": [-10.52, 4.6], "label": "hallway"},
+    {"id": 7, "loc": [-10.66, 7.48], "label": "hallway"},
+    {"id": 8, "loc": [-11.61, 9.68], "label": "hallway"},
+    {"id": 9, "loc": [-8.0, 9.49], "label": "hallway"},
+    {"id": 10, "loc": [-5.44, 10.08], "label": "hallway"},
+    {"id": 11, "loc": [-4.55, 7.21], "label": "hallway"},
+    {"id": 12, "loc": [-4.14, 4.57], "label": "hallway"},
 ]
 
 ## OUTPUT
 {
-    "reason": "The currently in-progress task is to go to the other side of the room and find an apple. The exeuction of current plan for the task is normal. No new user instruction is provided. The robot should continue with the current plan.",
+    "reason": "The currently in-progress task is to go around the hallway and check if there is anyone there. The robot is currently at waypoint 4 and has successfully reached waypoint 3. The current plan looks good and can continue.",
     "interrupt_current_task": false,
-    "new_plan": []
+    "new_plan": None
 }
 
 
 # EXAMPLE 2
 ## USER INSTRUCTION
-Explore the hallway and go back to the room.
+I'm hungry.
 
 ## ROBOT STATE
 State: {"time": "12:12:52", "posture": "standing", "waypoint_id": 1}
 
 Instruction History: [
 	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
-	{"start": "12:09:15", "end": "12:12:12", "inst": "Go to the other side of the room and find an apple and take a picture of it.", "status": "success"}
+	{"start": "12:09:15", "end": "12:12:12", "inst": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"}
 ]
 
-Current Plan: []
+Plan for In-Progress Instruction: None
+
+Action History for In-Progress Instruction: []
 
 ## SCENE DESCRIPTION
 Objects: [
 	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
-	{"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+	{"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
 Waypoints: [
@@ -70,7 +91,15 @@ Waypoints: [
 
 ## OUTPUT
 {
-    "reason": "A new user instruction is provided to explore the hallway and go back to the room. There is no currenly in-progress task and plan. I will create a new plan to explore the hallway and return to the room.",
+    "reason": "There is no in-progress instruction and the user is given a new instruction, so I will generate a new plan. The user is hungry, I should help to find some food. There is only one room in the scene, so I should explore the room and try to find some food there. Then according to the map, I will go to waypoints 1, 2, and 3 in order to find food.",
     "interrupt_current_task": false,
-    "new_plan": ["Go to waypoint 4, 5, and 6.", "Return to waypoint 1"]
+    "new_plan": "
+```
+target_waypoints = [1, 2, 3]
+for waypoint in target_waypoints:
+	goto_waypoint(waypoint)
+	if find some food around:
+		report("Found food at waypoint " + str(waypoint))
+		break
+```"
 }

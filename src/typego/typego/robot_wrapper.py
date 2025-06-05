@@ -275,6 +275,9 @@ class RobotObservation(ABC):
     def fetch_processed_result(self) -> tuple[Image.Image, list]:
         pass
 
+    def blocked(self) -> bool:
+        return False
+
 class RobotWrapper(ABC):
     def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: list[callable]):
         self.robot_info = robot_info

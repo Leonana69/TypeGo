@@ -76,6 +76,12 @@ class SkillSet():
             string += f"{skill}\n"
         return string
     
+    def _sim(self) -> str:
+        """Returns a string representation of the skillset."""
+        for skill in self.skills.values():
+            string += f"{skill._sim()}\n"
+        return string
+    
     @staticmethod
     def get_common_skillset(movement_skills: list[callable], vision_skills: list[callable], other_skills: list[callable]) -> 'SkillSet':
         skillset = SkillSet(level=SkillSetLevel.LOW)
