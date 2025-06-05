@@ -7,11 +7,28 @@ import threading
 
 from typego.yolo_client import YoloClient
 from typego.virtual_robot_wrapper import VirtualRobotWrapper
-from typego.robot_wrapper import RobotWrapper
+from typego.robot_wrapper import RobotPosture, RobotWrapper
 from typego.llm_planner import LLMPlanner
 from typego.utils import print_t, slam_map_overlay
 from typego.minispec_interpreter import MiniSpecInterpreter
 from typego.robot_info import RobotInfo
+
+class S0Event:
+    def __init__(self, description: str, condition: callable, action: callable, timeout: float = 3.0):
+        self.description = description
+        self.condition = condition
+        self.action = action
+        self.timeout = timeout
+        self.timer = time.time()
+
+    def check(self) -> bool:
+        if self.condition() and (time.time() - self.timer) > 0.0:
+            self.timer = time.time() + self.timeout
+            return True
+        return False
+    
+    def execute(self):
+        self.action()
 
 class LLMController():
     def __init__(self, robot_info: RobotInfo, message_queue: Optional[queue.Queue]=None):
@@ -45,8 +62,8 @@ class LLMController():
         self.s2_loop_thread = threading.Thread(target=self.s2_loop)
         self.s2_loop_thread.start()
 
-        # self.s0_loop_thread = threading.Thread(target=self.s0_loop)
-        # self.s0_loop_thread.start()
+        self.s0_loop_thread = threading.Thread(target=self.s0_loop)
+        self.s0_loop_thread.start()
 
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
@@ -99,24 +116,25 @@ class LLMController():
         time.sleep(1.0)
         print_t(f"[C] Starting S0...")
 
-        conditions = [
-            (5, lambda: self.robot.is_visible("person"), lambda: self.robot.look_up()),
-            (4, lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0)),
+        s0events = [
+            # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), timeout=5),
+            S0Event("Move back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), timeout=2.0),
         ]
 
         while self.running:
-            for timeout, condition, action in conditions:
-                if condition():
+            for event in s0events:
+                if event.check():
                     # block s1 and s2 loops
                     self.s0_control.clear()
-                    print_t(f"[C] Get condition: {condition.__name__}...")
+                    print_t(f"[C] Get condition: {event.description}...")
                     # stop the current robot action
+                    self.robot.stop_action()
+                    event.execute()
 
-                    # action()
                     self.s0_control.set()
             time.sleep(delay)
 
-    def s1_loop(self, rate: float = 1.0):
+    def s1_loop(self, rate: float = 0.5):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
@@ -162,7 +180,7 @@ class LLMController():
             elapsed = time.time() - start_time
             sleep_time = max(0, delay - elapsed)
             if sleep_time > 0:
-                self.s2_event.wait(timeout=sleep_time)
+                self.s2_event.wait(timeout=500.0)
             self.s2_event.clear()
 
     def user_instruction(self, inst: str):

@@ -12,8 +12,8 @@ from typego.skill_item import SKILL_RET_TYPE
 from typego.utils import print_t, evaluate_value
 
 def _print_debug(*args):
-    print(*args)
-    # pass
+    # print(*args)
+    pass
 
 EXECUTION_QUEUE: queue.Queue = queue.Queue()
 
@@ -546,10 +546,11 @@ class Statement:
         ll_skill = self.robot.ll_skillset.get_skill(func_name)
         if ll_skill:
             if self.log:
-                self.robot.memory.execute_action(func)
+                ac = self.robot.memory.add_action(func)
             rslt = ll_skill.execute(args)
             if self.log:
-                self.robot.memory.finish_action(rslt != False)
+                if ac:
+                    ac.finish(rslt != False)
             _print_debug(f'Executing low-level skill: {ll_skill.name} {args} {rslt}')
             return rslt
 
@@ -557,7 +558,7 @@ class Statement:
         if hl_skill:
             _print_debug(f'Executing high-level skill: {hl_skill.name}', args, hl_skill.execute(args)[0])
             if self.log:
-                self.robot.memory.execute_action(func)
+                ac = self.robot.memory.add_action(func)
             self.active_high_level_skill = Statement(self.env, self.robot, False)
             self.active_high_level_skill.parse(hl_skill.execute(args))
             try:
@@ -566,10 +567,11 @@ class Statement:
                 print_t(f'Error executing high-level skill: {e}')
                 val = False
             if self.log:
-                self.robot.memory.finish_action(val != False)
+                if ac:
+                    ac.finish(val != False)
             return val
         
-        raise Exception(f'Skill {func_name} is not defined')
+        raise Exception('Skill is not defined' + func)
 
     def eval_expr(self, expr: str) -> SKILL_RET_TYPE:
         if self._check_pause_stop():

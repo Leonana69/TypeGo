@@ -28,7 +28,7 @@ class LLMPlanner():
     def set_robot(self, robot: RobotWrapper):
         self.robot = robot
 
-    def s1_plan(self):
+    def s1_plan(self) -> str:
         robot_skills = ""
 
         robot_skills += f"#### Low-level skills\n"
@@ -43,15 +43,22 @@ class LLMPlanner():
 
         inst = self.robot.memory.get_current_inst_str()
 
+        scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
+        scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
+
         prompt = self.s1_prompt.format(user_guidelines=self.s1_user_guidelines,
                                             robot_skills=robot_skills,
                                             example_plans=self.s1_examples,
                                             instruction=inst,
                                             robot_state=state,
-                                            scene_description=self.robot.get_obj_list_str() + "\n")
+                                            scene_description=scene_description)
 
         # print_t(f"[S1] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
-        ret = self.llm.request(prompt, self.model_type, stream=False)
+        try:
+            ret = self.llm.request(prompt, self.model_type)
+        except Exception as e:
+            print_t(f"[S1] Error during LLM request: {e}")
+            return ""
         with open(CHAT_LOG_DIR + "s1_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
             remove_leading_prompt += ret
@@ -76,7 +83,7 @@ class LLMPlanner():
                                             scene_description=scene_description)
 
         # print_t(f"[S2] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
-        ret = self.llm.request(prompt, self.model_type, stream=False)
+        ret = self.llm.request(prompt, self.model_type, image=self.robot.observation.slam_map.get_map())
         with open(CHAT_LOG_DIR + "s2_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
             remove_leading_prompt += ret

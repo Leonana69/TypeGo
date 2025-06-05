@@ -63,11 +63,12 @@ class TypeFly:
                 type='messages',
             ).queue()
 
-            # Start a separate thread for streaming assistant messages
-            Thread(target=self.stream_from_queue, daemon=True).start()
+        # Start a separate thread for streaming assistant messages
+        Thread(target=self.stream_from_queue, daemon=True).start()
 
     def ui_process_message(self, message: str, history: list):
-        print_t(f"[S] Receiving task description: {message}")
+        print_t(f"[S] Receiving task description: {message}, history: {history}")
+        self.history = history
         if message == "exit":
             self.running = False
             return gr.ChatMessage(role="assistant", content="Shutting down...")
@@ -78,24 +79,19 @@ class TypeFly:
             return gr.ChatMessage(role="assistant", content="Okay! Working on it...")
 
     def stream_from_queue(self):
-        complete_response = ''
         while self.running:
             try:
-                msg = self.message_queue.get(timeout=1)
+                msg = self.message_queue.get(timeout=1.0)
             except queue.Empty:
                 continue
 
             if isinstance(msg, tuple):  # (image,) or similar
-                self.chat_interface.chatbot.append(gr.ChatMessage(role="assistant", content=msg))
+                history = gr.ChatMessage(role="assistant", content=msg)
             elif isinstance(msg, str):
-                if msg.startswith('[LOG]'):
-                    complete_response += '\n'
-                if msg.endswith('\\\\'):
-                    complete_response += msg.rstrip('\\\\')
-                else:
-                    complete_response += msg + '\n'
+                history = gr.ChatMessage(role="assistant", content=msg)
 
-                self.chat_interface.chatbot.append(gr.ChatMessage(role="assistant", content=complete_response))
+            print_t(f"[S] Received message: {msg}")
+
 
     def generate_mjpeg_stream(self, source: str):
         while self.running:

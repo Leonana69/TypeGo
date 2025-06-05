@@ -20,7 +20,7 @@ from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 
-from typego.robot_wrapper import RobotWrapper, RobotObservation
+from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture
 from typego.robot_info import RobotInfo
 from typego.minispec_interpreter import MiniSpecProgram
 from typego.yolo_client import YoloClient
@@ -257,7 +257,7 @@ class Go2Action:
                 print_t("[Go2] Action stopped.")
                 return
 
-            print_t(f"[Go2] Executing action: {action.__name__ if hasattr(action, '__name__') else action} for {duration:.2f}s")
+            # print_t(f"[Go2] Executing action: {action.__name__ if hasattr(action, '__name__') else action} for {duration:.2f}s")
             action()
 
             start_time = time.time()
@@ -268,26 +268,10 @@ class Go2Action:
                 time.sleep(0.1)  # 10Hz = 0.1s interval
 
         print_t("[Go2] Action execution completed.")
-
-class Go2Posture(Enum):
-    STANDING = "standing"
-    LYING = "lying"
-    MOVING = "moving"
-
-    @staticmethod
-    def from_string(s: str):
-        if s == "standing":
-            return Go2Posture.STANDING
-        elif s == "lying":
-            return Go2Posture.LYING
-        elif s == "moving":
-            return Go2Posture.MOVING
-        else:
-            raise ValueError(f"Unknown posture: {s}")
         
 class Go2StateEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, Go2Posture):
+        if isinstance(obj, RobotPosture):
             return obj.value
         return super().default(obj)
 
@@ -298,7 +282,7 @@ class Go2Wrapper(RobotWrapper):
 
         self.running = True
         self.state = {
-            "posture": Go2Posture.STANDING,
+            "posture": RobotPosture.STANDING,
             "x": 0.0, "y": 0.0,
             "yaw": 0,
         }
@@ -319,10 +303,10 @@ class Go2Wrapper(RobotWrapper):
             print_t(f"[Go2] {response.text}")
 
         self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
-        self.ll_skillset.add_low_level_skill("lying_down", lambda: self._action('stand_down'), "Stand down")
+        self.ll_skillset.add_low_level_skill("lie_down", lambda: self._action('stand_down'), "Stand down")
         # self.ll_skillset.add_low_level_skill("goto", self.goto, "Go to a specific position (x, y) in m", args=[SkillArg("x", float), SkillArg("y", float)])
         self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
-        self.ll_skillset.add_low_level_skill("stop_action", self.stop_action, "Stop current action")
+        self.ll_skillset.add_low_level_skill("stop", self.stop_action, "Stop current action")
         self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
         self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
         self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
@@ -345,7 +329,7 @@ class Go2Wrapper(RobotWrapper):
             },
             {
                 "name": "goto_object",
-                "definition": "2{orienting($1);_1=object_distance($1)/2;{move(_1, 0)}}",
+                "definition": "2{orienting($1);_1=object_distance($1)/3;{move(_1, 0)}}",
                 "description": "Move to object $1 in the view (orienting then go forward)"
             }
         ]
@@ -386,13 +370,16 @@ class Go2Wrapper(RobotWrapper):
         """
         Appends an action to the execution queue.
         """
+        print_t(f"[Go2] Appending actions: {actions}, active program: {self.active_program.statement.to_string() if self.active_program else None}")
         actions = actions.strip().split(';')
         for action in actions:
             action = action.strip()
+            if not action:
+                continue
+
             if action == "keep()":
                 continue
             elif action == "stop()":
-                self.memory.stop_action()
                 self.stop_action()
                 continue
             elif action == "done(True)":
@@ -437,24 +424,30 @@ class Go2Wrapper(RobotWrapper):
             "waypoint_id": self.observation.slam_map.get_nearest_waypoint_id((self.observation.position[0], self.observation.position[1])),
         }
         return json.dumps(js)
+    
+    @overrides
+    def get_posture(self) -> RobotPosture:
+        return self.state["posture"]
 
     def stop_action(self):
         print_t("[Go2] Stopping action...")
+        self.memory.stop_action()
         self.stop_action_event.set()
         if self.active_program:
             self.active_program.stop()
         time.sleep(0.5)
         self.stop_action_event.clear()
 
-    def look_object(self, object_name: str):
+    def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
         current_pitch = 0
         current_yaw = 0
 
-        while not self.stop_action_event.is_set():
+        start_time = time.time()
+        while not self.stop_action_event.is_set() and time.time() - start_time < timeout:
             info = self.get_obj_info(object_name)
 
             if info is None:
-                break
+                return False
 
             dx = 0.5 - info.x
             dy = info.y - 0.5
@@ -476,6 +469,8 @@ class Go2Wrapper(RobotWrapper):
             self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw)
             time.sleep(0.1)
 
+        return True
+
     def _action(self, action: str, **args):
         control = {
             "command": action,
@@ -485,9 +480,9 @@ class Go2Wrapper(RobotWrapper):
 
         match action:
             case "stand_up":
-                self.state["posture"] = Go2Posture.STANDING
+                self.state["posture"] = RobotPosture.STANDING
             case "stand_down":
-                self.state["posture"] = Go2Posture.LYING
+                self.state["posture"] = RobotPosture.LYING
             case _:
                 pass
 
@@ -523,9 +518,9 @@ class Go2Wrapper(RobotWrapper):
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
         print(f"-> Move by ({dx}, {dy}) m")
-        self.state["posture"] = Go2Posture.MOVING
+        self.state["posture"] = RobotPosture.MOVING
         self._move(linear_x=dx, linear_y=dy, duration=5.0)
-        self.state["posture"] = Go2Posture.STANDING
+        self.state["posture"] = RobotPosture.STANDING
         return True
 
     @overrides
@@ -534,9 +529,9 @@ class Go2Wrapper(RobotWrapper):
         Rotates the robot by the specified angle in degrees.
         """
         print(f"-> Rotate by {deg} degrees")
-        self.state["posture"] = Go2Posture.MOVING
+        self.state["posture"] = RobotPosture.MOVING
         self._move(angular_z=math.radians(deg), duration=5.0)
-        self.state["posture"] = Go2Posture.STANDING
+        self.state["posture"] = RobotPosture.STANDING
         return True
     
     def nod(self) -> bool:
@@ -550,6 +545,7 @@ class Go2Wrapper(RobotWrapper):
             actions.append((lambda: self._action("euler", roll=0, pitch=0.0, yaw=0), 0.5))
         go2_action = Go2Action(actions)
         go2_action.execute()
+        self._action("euler", roll=0, pitch=0.0, yaw=0)
         return True
     
     def look_up(self) -> bool:
@@ -563,6 +559,8 @@ class Go2Wrapper(RobotWrapper):
         ]
         go2_action = Go2Action(actions)
         go2_action.execute()
+        self._action("euler", roll=0, pitch=0.0, yaw=0)
+        print("-> Look up end")
         return True
     
     def goto_waypoint(self, id: int) -> bool:
@@ -575,7 +573,7 @@ class Go2Wrapper(RobotWrapper):
     
     def goto(self, x: float, y: float, timeout_sec: float = 30.0) -> bool:
         print(f"-> Go to ({x}, {y})")
-        self.state["posture"] = Go2Posture.MOVING
+        self.state["posture"] = RobotPosture.MOVING
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = 'map'
@@ -631,5 +629,5 @@ class Go2Wrapper(RobotWrapper):
                 goal_handle.cancel_goal_async()
             result_status["status"] = False
 
-        self.state["posture"] = Go2Posture.STANDING
+        self.state["posture"] = RobotPosture.STANDING
         return result_status["status"]

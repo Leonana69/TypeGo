@@ -8,6 +8,7 @@ import asyncio, cv2
 import re
 import numpy as np
 from collections import deque
+from enum import Enum
 
 from typego.skillset import SkillSet
 from typego.robot_info import RobotInfo
@@ -17,6 +18,22 @@ from typego.utils import evaluate_value
 from typego.memory import RobotMemory
 
 from typego_interface.msg import WayPointArray, WayPoint
+
+class RobotPosture(Enum):
+    STANDING = "standing"
+    LYING = "lying"
+    MOVING = "moving"
+
+    @staticmethod
+    def from_string(s: str):
+        if s == "standing":
+            return RobotPosture.STANDING
+        elif s == "lying":
+            return RobotPosture.LYING
+        elif s == "moving":
+            return RobotPosture.MOVING
+        else:
+            raise ValueError(f"Unknown posture: {s}")
 
 class SLAMMap:
     def __init__(self):
@@ -101,26 +118,26 @@ class SLAMMap:
         map_image = cv2.cvtColor(map_image, cv2.COLOR_GRAY2BGR)
 
         # Draw trajectory
-        now = time.time()
-        trajectory_copy = list(self.trajectory)
-        for i in range(1, len(trajectory_copy)):
-            t0, p0 = trajectory_copy[i - 1]
-            t1, p1 = trajectory_copy[i]
-            age = (now - t0) / 60.0  # normalized age [0, 1]
-            age = min(max(age, 0.0), 1.0)
+        # now = time.time()
+        # trajectory_copy = list(self.trajectory)
+        # for i in range(1, len(trajectory_copy)):
+        #     t0, p0 = trajectory_copy[i - 1]
+        #     t1, p1 = trajectory_copy[i]
+        #     age = (now - t0) / 60.0  # normalized age [0, 1]
+        #     age = min(max(age, 0.0), 1.0)
 
-            # Color fades from green (0,255,0) to red (0,0,255)
-            color = (
-                int(0),                 # Blue
-                int(255 * (1 - age)),   # Green
-                int(255 * age)          # Red
-            )
+        #     # Color fades from green (0,255,0) to red (0,0,255)
+        #     color = (
+        #         int(0),                 # Blue
+        #         int(255 * (1 - age)),   # Green
+        #         int(255 * age)          # Red
+        #     )
 
-            u0 = int((p0[0] - self.origin[0]) / self.resolution)
-            v0 = self.height - int((p0[1] - self.origin[1]) / self.resolution)
-            u1 = int((p1[0] - self.origin[0]) / self.resolution)
-            v1 = self.height - int((p1[1] - self.origin[1]) / self.resolution)
-            cv2.line(map_image, (u0, v0), (u1, v1), color, 2)
+        #     u0 = int((p0[0] - self.origin[0]) / self.resolution)
+        #     v0 = self.height - int((p0[1] - self.origin[1]) / self.resolution)
+        #     u1 = int((p1[0] - self.origin[0]) / self.resolution)
+        #     v1 = self.height - int((p1[1] - self.origin[1]) / self.resolution)
+        #     cv2.line(map_image, (u0, v0), (u1, v1), color, 2)
 
         # Draw robot position and orientation
         cv2.circle(map_image, (u, v), 3, (0, 255, 0), -1)
@@ -332,6 +349,10 @@ class RobotWrapper(ABC):
 
     @abstractmethod
     def get_state(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_posture(self) -> RobotPosture:
         pass
 
     # vision skills

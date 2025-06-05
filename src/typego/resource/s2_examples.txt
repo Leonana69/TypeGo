@@ -54,7 +54,7 @@ Waypoints: [
 {
     "reason": "The currently in-progress task is to go around the hallway and check if there is anyone there. The robot is currently at waypoint 4 and has successfully reached waypoint 3. The current plan looks good and can continue.",
     "interrupt_current_task": false,
-    "new_plan": None
+    "new_plan": ""
 }
 
 
@@ -93,13 +93,5 @@ Waypoints: [
 {
     "reason": "There is no in-progress instruction and the user is given a new instruction, so I will generate a new plan. The user is hungry, I should help to find some food. There is only one room in the scene, so I should explore the room and try to find some food there. Then according to the map, I will go to waypoints 1, 2, and 3 in order to find food.",
     "interrupt_current_task": false,
-    "new_plan": "
-```
-target_waypoints = [1, 2, 3]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if find some food around:
-		report("Found food at waypoint " + str(waypoint))
-		break
-```"
+    "new_plan": "target_waypoints = [1, 2, 3]\nfor waypoint in target_waypoints:\n\tgoto_waypoint(waypoint)\n\tif find some food around:\n\t\treport(\"Found food at waypoint \" + str(waypoint))\n\t\tbreak\n"
 }
