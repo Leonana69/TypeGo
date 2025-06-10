@@ -2,7 +2,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from contextlib import asynccontextmanager
 
-import json, os
+import json, os, time
 import asyncio, aiohttp, threading
 
 from typego.utils import print_t
@@ -14,6 +14,8 @@ CURRENT_DIR = get_package_share_directory('typego')
 EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
 # EDGE_SERVICE_IP = "localhost"
 EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
+
+FONT = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)
 
 class ObjectInfo:
     def __init__(self, name: str, x, y, w, h, depth=None):
@@ -57,8 +59,7 @@ class YoloClient():
 
     @property
     def latest_result(self) -> tuple[Image.Image, list] | None:
-        with self._latest_result_lock:
-            return self._latest_result
+        return self._latest_result
 
     @staticmethod
     def image_to_bytes(image: Image.Image) -> bytes:
@@ -69,14 +70,13 @@ class YoloClient():
 
     @staticmethod
     def plot_results_ps(image: Image.Image, object_list: list[ObjectInfo]) -> Image.Image:
-        if not image or len(object_list) == 0:
-            return
+        if len(object_list) == 0:
+            return image
 
         def str_float_to_int(value, multiplier):
             return int(float(value) * multiplier)
 
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)
         w, h = image.size
 
         for obj in object_list:
@@ -96,7 +96,7 @@ class YoloClient():
             # label += f" ({obj.x:.2f}, {obj.y:.2f})"
 
             draw_y = y1 - 40 if y1 - 40 > 0 else y2 + 10
-            draw.text((x1, draw_y), label, fill='red', font=font)
+            draw.text((x1, draw_y), label, fill='red', font=FONT)
 
         return image
     
@@ -130,13 +130,11 @@ class YoloClient():
 
     async def detect(self, image: Image.Image, conf=0.3):
         # Prepare image and config while not holding the lock
-        import time
-        t1 = time.time()
         config = {
             'robot_info': self.robot_info.robot_id,
             'service_type': 'yolo3d',
             'tracking_mode': False,
-            'image_id': self.frame_id + 1,  # We'll increment after
+            'image_id': 0,
             'conf': conf
         }
         image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))

@@ -56,11 +56,11 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        self.s1_loop_thread = threading.Thread(target=self.s1_loop)
-        self.s1_loop_thread.start()
+        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        # self.s1_loop_thread.start()
 
-        self.s2_loop_thread = threading.Thread(target=self.s2_loop)
-        self.s2_loop_thread.start()
+        # self.s2_loop_thread = threading.Thread(target=self.s2_loop)
+        # self.s2_loop_thread.start()
 
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s0_loop_thread.start()
@@ -93,12 +93,15 @@ class LLMController():
 
     def fetch_robot_pov(self) -> Optional[Image.Image]:
         obs = self.robot.observation
-        if not obs or not obs.image_process_result:
+        if not obs:
             return None
 
-        image, yolo_results = obs.image_process_result
-        image = YoloClient.plot_results_ps(image.copy(), yolo_results)
+        process_result = obs.fetch_processed_result()
+        if not process_result:
+            return None
 
+        image, yolo_results = process_result
+        image = YoloClient.plot_results_ps(image.copy(), yolo_results)
         return image
     
     def fetch_robot_map(self) -> Optional[Image.Image]:
@@ -118,7 +121,7 @@ class LLMController():
 
         s0events = [
             # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), timeout=5),
-            S0Event("Move back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), timeout=2.0),
+            S0Event("Step back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), timeout=2.0),
         ]
 
         while self.running:

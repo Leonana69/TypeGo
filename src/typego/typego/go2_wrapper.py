@@ -237,7 +237,7 @@ class Go2Observation(RobotObservation):
         await self.yolo_client.detect(image)
     
     @overrides
-    def fetch_processed_result(self) -> tuple[Image.Image, list]:
+    def fetch_processed_result(self) -> tuple[Image.Image, list] | None:
         return self.yolo_client.latest_result
 
 class Go2Action:

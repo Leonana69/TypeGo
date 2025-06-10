@@ -175,9 +175,6 @@ class RobotObservation(ABC):
         self._position_lock = threading.Lock()
         self._slam_map_lock = threading.Lock()
 
-        self._image_process_result: tuple[Image.Image, list[ObjectInfo]] | None = None
-        self._image_process_lock = threading.Lock()
-
         self.running: bool = False
         self.thread = threading.Thread(target=self.update_observation, daemon=True)
 
@@ -238,16 +235,6 @@ class RobotObservation(ABC):
     def position(self, value: ndarray):
         with self._position_lock:
             self._position = value
-    
-    @property
-    def image_process_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
-        with self._image_process_lock:
-            return self._image_process_result
-        
-    @image_process_result.setter
-    def image_process_result(self, value: tuple[Image.Image, list[ObjectInfo]]):
-        with self._image_process_lock:
-            self._image_process_result = value
         
     @property
     def slam_map(self) -> SLAMMap:
@@ -277,7 +264,6 @@ class RobotObservation(ABC):
                 
                 # Clean up completed tasks
                 tasks = {t for t in tasks if not t.done()}
-                self.image_process_result = self.fetch_processed_result()
                 # Sleep for the interval
                 elapsed_time = time.time() - start_time
                 await asyncio.sleep(max(0, self.interval - elapsed_time))
@@ -289,7 +275,7 @@ class RobotObservation(ABC):
         pass
     
     @abstractmethod
-    def fetch_processed_result(self) -> tuple[Image.Image, list]:
+    def fetch_processed_result(self) -> tuple[Image.Image, list] | None:
         pass
 
     def blocked(self) -> bool:
@@ -358,8 +344,9 @@ class RobotWrapper(ABC):
     # vision skills
     def get_obj_list(self) -> list[ObjectInfo]:
         """Returns a formatted string of detected objects."""
-        return self._observation.image_process_result[1] if self._observation.image_process_result else []
-    
+        process_result = self._observation.fetch_processed_result()
+        return process_result[1] if process_result else []
+
     def get_obj_list_str(self) -> str:
         """Returns a formatted string of detected objects."""
         object_list = self.get_obj_list()
