@@ -25,3 +25,7 @@ message SetClassResponse {
 service ClipService {
     rpc Detect (DetectRequest) returns (DetectResponse) {}
 }
+
+service VLMService {
+    rpc Detect (DetectRequest) returns (DetectResponse) {}
+}

@@ -4,8 +4,6 @@ import uvicorn
 import os, sys
 
 from vision_service import SERVICE_INFO
-from yolo_service import serve as yolo_serve
-from clip_service import serve as clip_serve
 
 EDGE_SERVICE_PORT = int(os.environ.get("EDGE_SERVICE_PORT", "50049"))
 
@@ -13,13 +11,21 @@ def start_worker_service(stop_event):
     processes = []
     for service in SERVICE_INFO:
         if service["name"] == "yolo":
+            from yolo_service import serve as yolo_serve
             for port in service["port"]:
                 process = multiprocessing.Process(target=yolo_serve, args=(port, stop_event))
                 process.start()
                 processes.append(process)
         elif service["name"] == "clip":
+            from clip_service import serve as clip_serve
             for port in service["port"]:
                 process = multiprocessing.Process(target=clip_serve, args=(port, stop_event))
+                process.start()
+                processes.append(process)
+        elif service["name"] == "vlm":
+            from vlm_service import serve as vlm_serve
+            for port in service["port"]:
+                process = multiprocessing.Process(target=vlm_serve, args=(port, stop_event))
                 process.start()
                 processes.append(process)
     return processes
@@ -29,7 +35,7 @@ def main():
     processes = start_worker_service(stop_event)
 
     def cleanup(_signalnum, _frame):
-        print("Shutting down YOLO services...")
+        print("Shutting down services...")
         stop_event.set()
         for p in processes:
             p.join()

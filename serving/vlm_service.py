@@ -1,15 +1,36 @@
-import torch
-import math
-import numpy as np
-import torch
-import torchvision.transforms as T
-from decord import VideoReader, cpu
+import sys, os, gc
+from concurrent import futures
 from PIL import Image
+from io import BytesIO
+import json, time
+import grpc
+import torch
+from transformers import AutoModel, AutoTokenizer
 from torchvision.transforms.functional import InterpolationMode
-from transformers import AutoModel, AutoTokenizer, AutoConfig
+import torchvision.transforms as T
+
+PROJ_DIR = os.environ.get("PROJ_PATH", os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(PROJ_DIR, "proto"))
+import hyrch_serving_pb2
+import hyrch_serving_pb2_grpc
+
+MODEL_TYPE = "ViT-L-14"
+DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
+
+def load_model():
+    path = 'OpenGVLab/InternVL3-8B'
+    model = AutoModel.from_pretrained(
+        path,
+        torch_dtype=torch.bfloat16,
+        load_in_8bit=True,
+        low_cpu_mem_usage=True,
+        use_flash_attn=True,
+        trust_remote_code=True).eval()
+    tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True, use_fast=False)
+    return model, tokenizer
 
 def build_transform(input_size):
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
@@ -74,31 +95,68 @@ def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbna
         processed_images.append(thumbnail_img)
     return processed_images
 
-def load_image(image_file, input_size=448, max_num=12):
-    image = Image.open(image_file).convert('RGB')
+def load_image(image, input_size=448, max_num=12):
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
     pixel_values = torch.stack(pixel_values)
     return pixel_values
 
-# If you set `load_in_8bit=True`, you will need two 80GB GPUs.
-# If you set `load_in_8bit=False`, you will need at least three 80GB GPUs.
-path = 'OpenGVLab/InternVL3-8B'
-model = AutoModel.from_pretrained(
-    path,
-    torch_dtype=torch.bfloat16,
-    load_in_8bit=True,
-    low_cpu_mem_usage=True,
-    use_flash_attn=True,
-    trust_remote_code=True).eval()
-tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True, use_fast=False)
+"""
+    gRPC service class.
+"""
+class VLMService(hyrch_serving_pb2_grpc.VLMServiceServicer):
+    def __init__(self, port):
+        self.model, self.tokenizer = load_model()
+        self.port = port
 
-# set the max number of tiles in `max_num`
-pixel_values = load_image('./cache/scene3.jpg', max_num=12).to(torch.bfloat16).cuda()
-generation_config = dict(max_new_tokens=1024, do_sample=True)
+    @staticmethod
+    def bytes_to_image(image_bytes) -> Image.Image:
+        return Image.open(BytesIO(image_bytes))
 
-# # single-image single-round conversation (单图单轮对话)
-question = '<image>\nYou are a helpful assistant, your taks is to generate a formated description of the image, including the following information:\n1. The main subject of the image.\n2. The background of the image.\n3. Any notable details or features in the image. The output format should be a JSON object with the following keys: "subject", "background", and "details".'
-response = model.chat(tokenizer, pixel_values, question, generation_config)
-print(f'User: {question}\nAssistant: {response}')
+    def parse_request(self, request) -> tuple[Image.Image, dict]:
+        info = json.loads(request.json_data)
+        image = VLMService.bytes_to_image(request.image_data)
+
+        return image, info
+    
+    def Detect(self, request, context) -> hyrch_serving_pb2.DetectResponse:
+        # print(f"Received Detect request from {context.peer()} on port {self.port}")
+        
+        # start_time = time.time()
+        image, info = self.parse_request(request)
+
+        if 'prompt' not in info:
+            info['result'] = 'No prompt provided'
+
+        print(f"Received Detect request {info['prompt']}")
+
+        pixel_values = load_image(image, max_num=12).to(torch.bfloat16).cuda()
+        generation_config = dict(max_new_tokens=1024, do_sample=True)
+
+        # # single-image single-round conversation (单图单轮对话)
+        question = info['prompt']
+        response = self.model.chat(self.tokenizer, pixel_values, question, generation_config)
+        info['result'] = response
+
+        # print(f"Detection took {time.time() - start_time} seconds")
+        return hyrch_serving_pb2.DetectResponse(json_data=json.dumps(info))
+
+def serve(port, stop_event):
+    print(f"VLM service at port {port} [STARTING]")
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+    hyrch_serving_pb2_grpc.add_VLMServiceServicer_to_server(VLMService(port), server)
+    server.add_insecure_port(f'[::]:{port}')
+    server.start()
+
+    try:
+        # Wait until the event is set
+        while not stop_event.is_set():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"VLM service at port {port} [STOPPED]")
+        server.stop(0)
+
+if __name__ == "__main__":
+    # test the service
+    serve(50054)

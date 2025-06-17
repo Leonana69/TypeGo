@@ -7,3 +7,5 @@ __pycache__/
 *_log.txt
 *.pt
 hyrch_serving_*
+cache/
+test/
