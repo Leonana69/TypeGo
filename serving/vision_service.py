@@ -13,9 +13,9 @@ app = Quart(__name__)
 grpcServiceManager = ServiceManager()
 
 SERVICE_INFO = [
-    # { "name": "yolo", "host": "localhost", "port" : [50050, 50051] },
-    # { "name": "yolo3d", "host": "localhost", "port" : [50060] },
-    # { "name": "clip", "host": "localhost", "port" : [50052] },
+    { "name": "yolo", "host": "localhost", "port" : [50050, 50051] },
+    { "name": "yolo3d", "host": "localhost", "port" : [50060] },
+    { "name": "clip", "host": "localhost", "port" : [50052] },
     { "name": "vlm", "host": "localhost", "port" : [50054] },
 ]
 

@@ -116,6 +116,10 @@ def serve(port, stop_event):
     server.add_insecure_port(f'[::]:{port}')
     server.start()
 
+    if stop_event is None:
+        while True:
+            time.sleep(1)
+
     try:
         # Wait until the event is set
         while not stop_event.is_set():
@@ -126,4 +130,4 @@ def serve(port, stop_event):
 
 if __name__ == "__main__":
     # test the service
-    serve(50050)
+    serve(50050, None)

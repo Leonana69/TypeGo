@@ -7,6 +7,7 @@ docker_start:
 	@echo "=> Starting vision-service..."
 	docker run -td --privileged --net=host $(GPU_OPTIONS) --ipc=host \
 		--env-file ./docker/.env \
+		-v ~/.cache/huggingface:/root/.cache/huggingface \
     	--name="vision-service" vision-service:0.1
 
 docker_stop:
