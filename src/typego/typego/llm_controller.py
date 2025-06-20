@@ -14,15 +14,16 @@ from typego.minispec_interpreter import MiniSpecInterpreter
 from typego.robot_info import RobotInfo
 
 class S0Event:
-    def __init__(self, description: str, condition: callable, action: callable, timeout: float = 3.0):
+    def __init__(self, description: str, condition: callable, action: callable, priority: int = 0, timeout: float = 3.0):
         self.description = description
         self.condition = condition
         self.action = action
         self.timeout = timeout
+        self.priority = priority
         self.timer = time.time()
 
-    def check(self) -> bool:
-        if self.condition() and (time.time() - self.timer) > 0.0:
+    def check(self, current_priority: int=99) -> bool:
+        if self.priority < current_priority and self.condition() and (time.time() - self.timer) > 0.0:
             self.timer = time.time() + self.timeout
             return True
         return False
@@ -112,7 +113,7 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def s0_loop(self, rate: float = 20.0):
+    def s0_loop(self, rate: float = 100.0):
         delay = 1 / rate
         while not self.running:
             time.sleep(0.1)
@@ -120,22 +121,39 @@ class LLMController():
         print_t(f"[C] Starting S0...")
 
         s0events = [
-            # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), timeout=5),
-            S0Event("Step back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), timeout=2.0),
+            S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
+            S0Event("Look apple", lambda: self.robot.is_visible("apple"), lambda: self.robot.look_object('apple'), 1, timeout=4),
+            S0Event("Step back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=2.0),
         ]
+
+        self.s0_in_progress_event: S0Event | None = None
+        event_queue = queue.Queue()
+        s0_event_executor_thread = threading.Thread(target=self.s0_event_executor, args=(event_queue,))
+        s0_event_executor_thread.start()
 
         while self.running:
             for event in s0events:
-                if event.check():
-                    # block s1 and s2 loops
-                    self.s0_control.clear()
-                    print_t(f"[C] Get condition: {event.description}...")
-                    # stop the current robot action
-                    self.robot.stop_action()
-                    event.execute()
+                if event.check(self.s0_in_progress_event.priority if self.s0_in_progress_event else 99):
+                    if self.s0_in_progress_event is None:
+                        print_t(f"[C] New event triggered: {event.description}")
+                    else:
+                        print_t(f"[C] Canceling {self.s0_in_progress_event.description}... and executing {event.description}")
+                        self.robot.stop_action()
 
-                    self.s0_control.set()
+                    event_queue.put(event)
             time.sleep(delay)
+
+    def s0_event_executor(self, event_queue: queue.Queue[S0Event]):
+        while self.running:
+            try:
+                event = event_queue.get(timeout=1)
+                self.s0_control.clear()
+                self.s0_in_progress_event = event
+                event.execute()
+                self.s0_in_progress_event = None
+                self.s0_control.set()
+            except queue.Empty:
+                continue
 
     def s1_loop(self, rate: float = 0.5):
         delay = 1 / rate

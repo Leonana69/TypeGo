@@ -265,7 +265,7 @@ class Go2Action:
                 if self.event.is_set():
                     print_t("[Go2] Action interrupted during execution.")
                     return
-                time.sleep(0.1)  # 10Hz = 0.1s interval
+                time.sleep(0.01)
 
         print_t("[Go2] Action execution completed.")
         
@@ -435,7 +435,7 @@ class Go2Wrapper(RobotWrapper):
         self.stop_action_event.set()
         if self.active_program:
             self.active_program.stop()
-        time.sleep(0.5)
+        time.sleep(0.05)
         self.stop_action_event.clear()
 
     def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
@@ -466,8 +466,11 @@ class Go2Wrapper(RobotWrapper):
                 current_yaw = 0
                 continue
 
-            self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw)
-            time.sleep(0.1)
+            actions = [
+                (lambda: self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw), 0.1)
+            ]
+            go2_action = Go2Action(actions)
+            go2_action.execute()
 
         return True
 
@@ -552,7 +555,7 @@ class Go2Wrapper(RobotWrapper):
         """
         Looks up by adjusting the robot's head pitch.
         """
-        print("-> Look up")
+        print_t("-> Look up")
         actions = [
             (lambda: self._action("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
             for _ in range(15)  # 3 up/down cycles
@@ -560,7 +563,7 @@ class Go2Wrapper(RobotWrapper):
         go2_action = Go2Action(actions)
         go2_action.execute()
         self._action("euler", roll=0, pitch=0.0, yaw=0)
-        print("-> Look up end")
+        print_t("-> Look up end")
         return True
     
     def goto_waypoint(self, id: int) -> bool:
