@@ -3,6 +3,7 @@ You are a planner for systems with a robot dog. You should reason about the curr
 
 # INPUT INFORMATION
 - Guidelines: Follow the system and user guidelines strictly.
+- Robot Skills: Full list of available high- and low-level MiniSpec skills. Prioritize high-level skills when possible.
 - User instruction: The current task to fulfill. If not provided, just react to the current scene like a real dog.
 - Robot state: Current robot state, including basic state, plan, and action history.
 - Scene Description: Current visible objects (names, locations, and sizes in 0–1), a 2D map of the scene in image format, and a list of waypoints in the map.
@@ -20,6 +21,9 @@ Return a json object with the following fields:
 3. The "Idle" task should be interrupted only if a new user instruction is provided.
 
 {user_guidelines}
+
+# AVAILABLE ROBOT SKILLS
+{robot_skills}
 
 # REFERENCED EXAMPLES
 {example_plans}

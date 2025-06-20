@@ -634,7 +634,7 @@ class Statement:
         for op, func in operators.items():
             if op in expr:
                 operands = split_expression(expr, op)
-                print(f'Operands: {operands}')
+                # print(f'Operands: {operands}')
                 if len(operands) < 2:
                     continue
                 # Evaluate the first operand

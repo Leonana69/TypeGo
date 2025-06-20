@@ -30,7 +30,6 @@ class LLMPlanner():
 
     def s1_plan(self) -> str:
         robot_skills = ""
-
         robot_skills += f"#### Low-level skills\n"
         robot_skills += str(self.robot.ll_skillset)
         if self.robot.hl_skillset is not None:
@@ -68,6 +67,13 @@ class LLMPlanner():
     def s2_plan(self) -> str:
         inst = self.robot.memory.get_current_inst_str()
 
+        robot_skills = ""
+        robot_skills += f"#### Low-level skills\n"
+        robot_skills += str(self.robot.ll_skillset._sim())
+        if self.robot.hl_skillset is not None:
+            robot_skills += f"\n#### High-level skills\n"
+            robot_skills += str(self.robot.hl_skillset._sim())
+
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
 
@@ -79,6 +85,7 @@ class LLMPlanner():
         prompt = self.s2_prompt.format(user_guidelines=self.s2_user_guidelines,
                                             example_plans=self.s2_examples,
                                             user_instruction=inst,
+                                            robot_skills=robot_skills,
                                             robot_state=state,
                                             scene_description=scene_description)
 

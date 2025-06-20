@@ -7,10 +7,9 @@ import threading
 
 from typego.yolo_client import YoloClient
 from typego.virtual_robot_wrapper import VirtualRobotWrapper
-from typego.robot_wrapper import RobotPosture, RobotWrapper
+from typego.robot_wrapper import RobotPosture
 from typego.llm_planner import LLMPlanner
-from typego.utils import print_t, slam_map_overlay
-from typego.minispec_interpreter import MiniSpecInterpreter
+from typego.utils import print_t
 from typego.robot_info import RobotInfo
 
 class S0Event:
@@ -57,11 +56,11 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
-        # self.s1_loop_thread.start()
+        self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        self.s1_loop_thread.start()
 
-        # self.s2_loop_thread = threading.Thread(target=self.s2_loop)
-        # self.s2_loop_thread.start()
+        self.s2_loop_thread = threading.Thread(target=self.s2_loop)
+        self.s2_loop_thread.start()
 
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s0_loop_thread.start()
@@ -121,8 +120,8 @@ class LLMController():
         print_t(f"[C] Starting S0...")
 
         s0events = [
-            S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
-            S0Event("Look apple", lambda: self.robot.is_visible("apple"), lambda: self.robot.look_object('apple'), 1, timeout=4),
+            # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
+            # S0Event("Look apple", lambda: self.robot.is_visible("apple"), lambda: self.robot.look_object('apple'), 1, timeout=4),
             S0Event("Step back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=2.0),
         ]
 
@@ -171,7 +170,7 @@ class LLMController():
                 self.s0_control.wait()
 
             self.robot.append_actions(plan)
-            print_t(f"[C] Plan: {plan}")
+            print_t(f"[S1] Plan: {plan}")
             
             elapsed = time.time() - start_time
             sleep_time = max(0, delay - elapsed)
@@ -189,7 +188,7 @@ class LLMController():
         while self.running:
             start_time = time.time()
             plan = self.planner.s2_plan()
-            print_t(f"[C] Plan: {plan}")
+            print_t(f"[S2] Plan: {plan}")
 
             # pause if s0 is processing
             if not self.s0_control.is_set():

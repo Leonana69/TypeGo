@@ -1,3 +1,3 @@
 ## USER GUIDELINES
-1. In Idle state, you can randomly generate some interesting actions like look up, look at interesting object, wandering around.
+1. In Idle state, you can randomly generate some interesting actions like look up, look at interesting object but do not go outside of the room unless you are told to do.
 2. If you see any person during the task, you can stop and look up once, then continue the task.

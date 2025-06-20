@@ -78,6 +78,7 @@ class SkillSet():
     
     def _sim(self) -> str:
         """Returns a string representation of the skillset."""
+        string = ''
         for skill in self.skills.values():
             string += f"{skill._sim()}\n"
         return string

@@ -267,7 +267,7 @@ class Go2Action:
                     return
                 time.sleep(0.01)
 
-        print_t("[Go2] Action execution completed.")
+        # print_t("[Go2] Action execution completed.")
         
 class Go2StateEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -439,8 +439,8 @@ class Go2Wrapper(RobotWrapper):
         self.stop_action_event.clear()
 
     def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
-        current_pitch = 0
-        current_yaw = 0
+        body_pitch = self.observation.orientation[1]
+        body_yaw = 0
 
         start_time = time.time()
         while not self.stop_action_event.is_set() and time.time() - start_time < timeout:
@@ -454,20 +454,20 @@ class Go2Wrapper(RobotWrapper):
 
             # Dead zone in x-direction
             if abs(dx) > 0.05:
-                current_yaw += dx / 4.0
+                body_yaw += dx / 4.0
             # Dead zone in y-direction (optional: adjust based on your use case)
             if abs(dy) > 0.05:
-                current_pitch += dy / 6.0
-                current_pitch = max(-0.75, min(0.75, current_pitch))
+                body_pitch += dy / 6.0
+                body_pitch = max(-0.75, min(0.75, body_pitch))
 
             # If yaw exceeds limits, rotate and skip the Euler update
-            if abs(current_yaw) > 0.6:
-                self.rotate(current_yaw * 180.0 / math.pi / 4)
-                current_yaw = 0
+            if abs(body_yaw) > 0.5:
+                self.rotate(body_yaw * 180.0 / math.pi / 4)
+                body_yaw = 0
                 continue
 
             actions = [
-                (lambda: self._action("euler", roll=0, pitch=current_pitch, yaw=current_yaw), 0.1)
+                (lambda: self._action("euler", roll=0, pitch=body_pitch, yaw=body_yaw), 0.1)
             ]
             go2_action = Go2Action(actions)
             go2_action.execute()
@@ -531,7 +531,7 @@ class Go2Wrapper(RobotWrapper):
         """
         Rotates the robot by the specified angle in degrees.
         """
-        print(f"-> Rotate by {deg} degrees")
+        # print_t(f"-> Rotate by {deg} degrees")
         self.state["posture"] = RobotPosture.MOVING
         self._move(angular_z=math.radians(deg), duration=5.0)
         self.state["posture"] = RobotPosture.STANDING
@@ -562,7 +562,6 @@ class Go2Wrapper(RobotWrapper):
         ]
         go2_action = Go2Action(actions)
         go2_action.execute()
-        self._action("euler", roll=0, pitch=0.0, yaw=0)
         print_t("-> Look up end")
         return True
     
