@@ -91,6 +91,11 @@ public:
 
         const char* edge_service_ip = std::getenv("EDGE_SERVICE_IP");
         edge_service_ip_ = edge_service_ip ? std::string(edge_service_ip) : "localhost";
+        if (edge_service_ip_.empty()) {
+            RCLCPP_WARN(this->get_logger(), "EDGE_SERVICE_IP not set, using default: localhost");
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Using EDGE_SERVICE_IP: %s", edge_service_ip_.c_str());
+        }
     }
 
 private:
