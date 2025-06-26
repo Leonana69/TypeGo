@@ -5,7 +5,7 @@ from io import BytesIO
 import json, time
 import grpc
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
 from torchvision.transforms.functional import InterpolationMode
 import torchvision.transforms as T
 
@@ -22,10 +22,13 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 def load_model():
     path = 'OpenGVLab/InternVL3-8B'
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit=True,
+    )
     model = AutoModel.from_pretrained(
         path,
         torch_dtype=torch.bfloat16,
-        load_in_8bit=True,
+        quantization_config=bnb_config,
         low_cpu_mem_usage=True,
         use_flash_attn=True,
         trust_remote_code=True).eval()

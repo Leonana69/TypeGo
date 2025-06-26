@@ -1,9 +1,5 @@
 syntax = "proto3";
 
-service YoloService {
-    rpc Detect (DetectRequest) returns (DetectResponse) {}
-}
-
 message DetectRequest {
     string json_data = 1;
     bytes image_data = 2; // Encoded image data
@@ -13,13 +9,8 @@ message DetectResponse {
     string json_data = 1;
 }
 
-// for yolo world detection
-message SetClassRequest {
-    repeated string class_names = 1;
-}
-
-message SetClassResponse {
-    string result = 1;
+service YoloService {
+    rpc Detect (DetectRequest) returns (DetectResponse) {}
 }
 
 service ClipService {
@@ -27,5 +18,9 @@ service ClipService {
 }
 
 service VLMService {
+    rpc Detect (DetectRequest) returns (DetectResponse) {}
+}
+
+service LLMService {
     rpc Detect (DetectRequest) returns (DetectResponse) {}
 }

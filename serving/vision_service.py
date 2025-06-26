@@ -17,6 +17,7 @@ SERVICE_INFO = [
     { "name": "yolo3d", "host": "localhost", "port" : [50060] },
     { "name": "clip", "host": "localhost", "port" : [50052] },
     { "name": "vlm", "host": "localhost", "port" : [50054] },
+    { "name": "llm", "host": "localhost", "port" : [50055] }
 ]
 
 @app.before_serving
@@ -68,6 +69,11 @@ async def process():
         response = await stub.Detect(hyrch_serving_pb2.DetectRequest(
             json_data=json_str,
             image_data=image_bytes
+        ))
+    elif service_type == "llm":
+        stub = hyrch_serving_pb2_grpc.LLMServiceStub(channel)
+        response = await stub.Detect(hyrch_serving_pb2.DetectRequest(
+            json_data=json_str
         ))
 
     return response.json_data
