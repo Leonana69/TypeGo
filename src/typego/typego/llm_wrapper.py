@@ -17,13 +17,7 @@ class LLMWrapper:
         self.temperature = temperature
         self.gpt_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    def request(self, prompt, model_type: ModelType, stream: bool=False, image: cv2.Mat | Image.Image | None=None) -> str | Stream[ChatCompletion.ChatCompletionChunk]:        
-        # response = self.gpt_client.chat.completions.create(
-        #     model=model_type.value,
-        #     messages=[{"role": "user", "content": prompt}],
-        #     temperature=self.temperature,
-        #     stream=stream,
-        # )
+    def request(self, prompt, model_type: ModelType=ModelType.GPT4O, stream: bool=False, image: cv2.Mat | Image.Image | None=None) -> str | Stream[ChatCompletion.ChatCompletionChunk]:        
         content = [{
             "type": "input_text",
             "text": prompt
