@@ -8,7 +8,6 @@
 #include <cmath>
 #include <queue>
 #include <unordered_set>
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <opencv2/opencv.hpp>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -261,35 +260,31 @@ private:
         // Prepare the HTTP request
         CURL *curl = curl_easy_init();
         if (curl) {
-            struct curl_httppost *formpost = NULL;
-            struct curl_httppost *lastptr = NULL;
-            
+            curl_mime *mime = curl_mime_init(curl);
+
             // Add image part
-            curl_formadd(&formpost, &lastptr,
-                         CURLFORM_COPYNAME, "image",
-                         CURLFORM_BUFFER, "image.webp",
-                         CURLFORM_BUFFERPTR, buffer.data(),
-                         CURLFORM_BUFFERLENGTH, buffer.size(),
-                         CURLFORM_CONTENTTYPE, "image/webp",
-                         CURLFORM_END);
-            
+            curl_mimepart *part = curl_mime_addpart(mime);
+            curl_mime_name(part, "image");
+            curl_mime_filename(part, "image.webp");
+            curl_mime_data(part, reinterpret_cast<const char*>(buffer.data()), buffer.size());
+            curl_mime_type(part, "image/webp");
+
             // Add JSON part
             std::string json_str = json_data.dump();
-            curl_formadd(&formpost, &lastptr,
-                         CURLFORM_COPYNAME, "json_data",
-                         CURLFORM_COPYCONTENTS, json_str.c_str(),
-                         CURLFORM_END);
-            
+            curl_mimepart *json_part = curl_mime_addpart(mime);
+            curl_mime_name(json_part, "json_data");
+            curl_mime_data(json_part, json_str.c_str(), json_str.size());
+
             // Set the URL
             std::string url = "http://" + edge_service_ip_ + ":50049/process";
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-            curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-            
+            curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+
             // Response handling
             std::string response_string;
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
-            
+
             // Perform the request
             CURLcode res = curl_easy_perform(curl);
             if (res != CURLE_OK) {
@@ -302,14 +297,16 @@ private:
                     auto max_it = std::max_element(results.begin(), results.end());
                     size_t best_index = std::distance(results.begin(), max_it);
                     RCLCPP_INFO(this->get_logger(), "CLIP Response: %s", response_string.c_str());
+                    curl_mime_free(mime);
+                    curl_easy_cleanup(curl);
                     return static_cast<int>(best_index);
                 } catch (const std::exception& e) {
                     RCLCPP_ERROR(this->get_logger(), "Failed to parse JSON response: %s", e.what());
                 }
             }
-            
+
             // Cleanup
-            curl_formfree(formpost);
+            curl_mime_free(mime);
             curl_easy_cleanup(curl);
         }
 

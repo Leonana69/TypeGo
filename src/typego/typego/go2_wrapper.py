@@ -222,7 +222,7 @@ class Go2Observation(RobotObservation):
         """
         # If the closest object is within 0.4m and it's directly in front of the robot
         distance, angle = self.closest_object
-        return distance < 0.4 and abs(angle) < math.radians(30)
+        return distance < 0.4 and abs(angle) < math.radians(60)
         
     @overrides
     def _start(self):
@@ -428,6 +428,11 @@ class Go2Wrapper(RobotWrapper):
     @overrides
     def get_posture(self) -> RobotPosture:
         return self.state["posture"]
+    
+    def _stand_check(self):
+        if self.state["posture"] == RobotPosture.LYING:
+            self._action("stand_up")
+            self.state["posture"] = RobotPosture.STANDING
 
     def stop_action(self):
         print_t("[Go2] Stopping action...")
@@ -439,6 +444,7 @@ class Go2Wrapper(RobotWrapper):
         self.stop_action_event.clear()
 
     def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
+        self._stand_check()
         body_pitch = self.observation.orientation[1]
         body_yaw = 0
 
@@ -521,6 +527,8 @@ class Go2Wrapper(RobotWrapper):
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
         print(f"-> Move by ({dx}, {dy}) m")
+        self._stand_check()
+
         self.state["posture"] = RobotPosture.MOVING
         self._move(linear_x=dx, linear_y=dy, duration=5.0)
         self.state["posture"] = RobotPosture.STANDING
@@ -531,7 +539,8 @@ class Go2Wrapper(RobotWrapper):
         """
         Rotates the robot by the specified angle in degrees.
         """
-        # print_t(f"-> Rotate by {deg} degrees")
+        print_t(f"-> Rotate by {deg} degrees")
+        self._stand_check()
         self.state["posture"] = RobotPosture.MOVING
         self._move(angular_z=math.radians(deg), duration=5.0)
         self.state["posture"] = RobotPosture.STANDING
@@ -542,6 +551,7 @@ class Go2Wrapper(RobotWrapper):
         Nods the robot's head.
         """
         print("-> Nod")
+        self._stand_check()
         actions = []
         for _ in range(2):  # 2 up/down cycles = 4 total motions
             actions.append((lambda: self._action("euler", roll=0, pitch=-0.2, yaw=0), 0.5))
@@ -556,6 +566,7 @@ class Go2Wrapper(RobotWrapper):
         Looks up by adjusting the robot's head pitch.
         """
         print_t("-> Look up")
+        self._stand_check()
         actions = [
             (lambda: self._action("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
             for _ in range(15)  # 3 up/down cycles
@@ -567,6 +578,7 @@ class Go2Wrapper(RobotWrapper):
     
     def goto_waypoint(self, id: int) -> bool:
         print(f"-> Go to waypoint {id}")
+        self._stand_check()
         wp = self.observation.slam_map.get_waypoint(id)
         if wp is None:
             print_t(f"Waypoint {id} not found")
@@ -575,6 +587,7 @@ class Go2Wrapper(RobotWrapper):
     
     def goto(self, x: float, y: float, timeout_sec: float = 30.0) -> bool:
         print(f"-> Go to ({x}, {y})")
+        self._stand_check()
         self.state["posture"] = RobotPosture.MOVING
 
         goal_msg = NavigateToPose.Goal()

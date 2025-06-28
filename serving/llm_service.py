@@ -47,7 +47,7 @@ class LLMService(hyrch_serving_pb2_grpc.LLMServiceServicer):
         print(f"Received Detect request {info['prompt']}")
         prompt = info['prompt']
         max_new_tokens = info.get('max_new_tokens', 1024)
-        temperature = info.get('temperature', 0.0)
+        temperature = info.get('temperature', 0.1)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
 
         with torch.no_grad():
