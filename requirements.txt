@@ -1,0 +1,9 @@
+typing_extensions
+pyyaml
+numpy
+gradio
+flask
+opencv-python
+overrides
+aiohttp
+scipy
