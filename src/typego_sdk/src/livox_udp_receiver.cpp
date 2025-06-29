@@ -18,28 +18,34 @@
 
 class LivoxReceiver : public rclcpp::Node {
 public:
-    LivoxReceiver(const std::string& target_ip)
-        : Node("livox_udp_receiver"), target_ip_(target_ip) {
+    LivoxReceiver() : Node("livox_udp_receiver") {
         publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("livox_points", 10);
         laserscan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-        socket_ = socket(AF_INET, SOCK_STREAM, 0);
-        if (socket_ < 0) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to create socket");
-            throw std::runtime_error("Socket creation failed");
-        }
+        socket_ = socket(AF_INET, SOCK_DGRAM, 0);
 
-        target_addr_.sin_family = AF_INET;
-        target_addr_.sin_port = htons(8888);
-        inet_pton(AF_INET, target_ip_.c_str(), &target_addr_.sin_addr);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(8888);
+        addr.sin_addr.s_addr = INADDR_ANY;
+        bind(socket_, (sockaddr*)&addr, sizeof(addr));
 
-        if (connect(socket_, (sockaddr*)&target_addr_, sizeof(target_addr_)) < 0) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to connect to server %s:8888", target_ip_.c_str());
-            throw std::runtime_error("Connection failed");
-        }
+        // Send a dummy packet to notify server of this client's address
+        sockaddr_in server_addr{};
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(8888);  // server port must match
+
+        const char* go2_ip = std::getenv("GO2_IP");
+        std::string go2_ip_ = go2_ip ? std::string(go2_ip) : "192.168.0.253";
+
+        inet_pton(AF_INET, go2_ip_.c_str(), &server_addr.sin_addr);  // use server's actual IP
+
+        uint8_t init_packet[1] = {0};
+        sendto(socket_, init_packet, sizeof(init_packet), 0, (sockaddr*)&server_addr, sizeof(server_addr));
 
         thread_ = std::thread([this]() { this->receive_loop(); });
+
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(100),
             std::bind(&LivoxReceiver::publish_aggregated_cloud, this)
@@ -121,12 +127,9 @@ private:
 
     void receive_loop() {
         std::vector<uint8_t> buffer(2048);
-    while (keep_running_ && rclcpp::ok()) {
-        ssize_t rlen = recv(socket_, buffer.data(), buffer.size(), 0);
-            if (rlen <= 0) {
-                RCLCPP_WARN(this->get_logger(), "Disconnected from server.");
-                continue;
-            }
+        while (keep_running_ && rclcpp::ok()) {
+            ssize_t rlen = recvfrom(socket_, buffer.data(), buffer.size(), 0, nullptr, nullptr);
+            if (rlen <= 0) continue;
             unsigned long recv_len = static_cast<unsigned long>(rlen);
 
             uint8_t msg_type = buffer[0];
@@ -170,16 +173,11 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laserscan_publisher_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-
-    std::string target_ip_;
-    sockaddr_in target_addr_;
 };
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    std::string target_ip = "192.168.0.253"; // default
-    if (argc > 1) target_ip = argv[1];
-    rclcpp::spin(std::make_shared<LivoxReceiver>(target_ip));
+    rclcpp::spin(std::make_shared<LivoxReceiver>());
     rclcpp::shutdown();
     return 0;
 }

@@ -10,8 +10,11 @@ public:
 
         gst_init(nullptr, nullptr);
 
+        const char* interface = std::getenv("GSTREAMER_INTERFACE");
+        std::string interface_str = interface ? std::string(interface) : "wlp38s0";
+
         std::string pipeline_str =
-            "udpsrc address=230.1.1.1 port=1720 multicast-iface=wlan0 "
+            "udpsrc address=230.1.1.2 port=1721 multicast-iface=" + interface_str + " "
             "! application/x-rtp, media=video, encoding-name=H264"
             "! rtph264depay"
             "! h264parse"
