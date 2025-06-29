@@ -337,10 +337,6 @@ class RobotWrapper(ABC):
     def get_state(self) -> str:
         pass
 
-    @abstractmethod
-    def get_posture(self) -> RobotPosture:
-        pass
-
     # vision skills
     def get_obj_list(self) -> list[ObjectInfo]:
         """Returns a formatted string of detected objects."""

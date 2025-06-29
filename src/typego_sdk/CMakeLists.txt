@@ -30,21 +30,39 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(livox_udp_receiver_node src/livox_udp_receiver.cpp)
-ament_target_dependencies(livox_udp_receiver_node rclcpp sensor_msgs tf2_ros)
+target_link_libraries(livox_udp_receiver_node PUBLIC
+  ${sensor_msgs_TARGETS}
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs_library
+  tf2_ros::static_transform_broadcaster_node
+  tf2_ros::tf2_ros
+)
 
 pkg_check_modules(GST REQUIRED gstreamer-1.0 gstreamer-app-1.0)
 
 add_executable(gstreamer_receiver_node src/gstreamer_receiver.cpp)
-ament_target_dependencies(gstreamer_receiver_node rclcpp sensor_msgs)
-
 target_include_directories(gstreamer_receiver_node PRIVATE ${GST_INCLUDE_DIRS})
-target_link_libraries(gstreamer_receiver_node ${GST_LIBRARIES})
+target_link_libraries(gstreamer_receiver_node PUBLIC
+  ${sensor_msgs_TARGETS}
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs_library
+  ${GST_LIBRARIES}
+)
 
 find_package(typego_interface REQUIRED)
 add_executable(waypoints_node src/waypoints.cpp)
-ament_target_dependencies(waypoints_node rclcpp geometry_msgs tf2 tf2_ros nav_msgs visualization_msgs typego_interface)
-
-target_link_libraries(waypoints_node ${OpenCV_LIBS} ${CURL_LIBRARIES})
+target_link_libraries(waypoints_node PUBLIC
+  ${geometry_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  ${typego_interface_TARGETS}
+  ${visualization_msgs_TARGETS}
+  rclcpp::rclcpp
+  tf2::tf2
+  tf2_ros::static_transform_broadcaster_node
+  tf2_ros::tf2_ros
+  ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
+)
 
 install(TARGETS
   livox_udp_receiver_node

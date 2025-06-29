@@ -122,7 +122,7 @@ class LLMController():
         s0events = [
             # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
             S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
-            S0Event("Step back", lambda: self.robot.get_posture() == RobotPosture.STANDING and self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
+            S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
         ]
 
         self.s0_in_progress_event: S0Event | None = None
