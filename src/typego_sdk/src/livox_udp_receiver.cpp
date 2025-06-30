@@ -19,6 +19,7 @@
 class LivoxReceiver : public rclcpp::Node {
 public:
     LivoxReceiver() : Node("livox_udp_receiver") {
+        printf("[LivoxReceiver] Initializing...\n");
         publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("livox_points", 10);
         laserscan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
@@ -30,6 +31,10 @@ public:
         addr.sin_port = htons(8888);
         addr.sin_addr.s_addr = INADDR_ANY;
         bind(socket_, (sockaddr*)&addr, sizeof(addr));
+        struct timeval tv;
+        tv.tv_sec = 1;  // 1 second timeout
+        tv.tv_usec = 0;
+        setsockopt(socket_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
 
         // Send a dummy packet to notify server of this client's address
         sockaddr_in server_addr{};
