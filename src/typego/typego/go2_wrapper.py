@@ -26,6 +26,7 @@ from typego.minispec_interpreter import MiniSpecProgram
 from typego.yolo_client import YoloClient
 from typego.skillset import SkillSet, SkillArg, SkillSetLevel
 from typego.utils import quaternion_to_rpy, print_t, ImageRecover
+from typego.pid import PID
 
 from typego_interface.msg import WayPointArray
 
@@ -250,7 +251,7 @@ class Go2Action:
     
     def execute(self):
         """
-        Execute actions at 10Hz, and check for stop events frequently.
+        Execute actions at 100Hz, and check for stop events frequently.
         """
         for action, duration in self.actions:
             if self.event.is_set():
@@ -275,27 +276,41 @@ class Go2StateEncoder(json.JSONEncoder):
             return obj.value
         return super().default(obj)
 
-def standing_required(func):
+def go2action(feature_str: str = None):
     """
-    Decorator to mark a function as a action requires standing state.
+    Decorator to mark a function as an action that can be executed.
+    This will create a Go2Action instance and execute it.
     """
-    def wrapper(self, *args, **kwargs):
-        if self.posture == RobotPosture.LYING:
-            self._action("stand_up")
-        return func(self, *args, **kwargs)
-    return wrapper
+    def decorator(func):
+        features = feature_str.split(",") if feature_str else []
+        def wrapper(self: "Go2Wrapper", *args, **kwargs):
+            if not self.action_lock.acquire(timeout=0.1):
+                self.stop_action()
+                self.stop_action_event.set()
+                while not self.action_lock.acquire(timeout=0.1):
+                    if not self.running:
+                        return
+                self.stop_action_event.clear()
+            else:
+                self.stop_action_event.clear()
 
-def trigger_moving(func):
-    """
-    Decorator to mark a function as a action requires moving state.
-    """
-    def wrapper(self, *args, **kwargs):
-        assert(self.posture == RobotPosture.STANDING), "The starting of the action requires the robot to be in standing state."
-        self.posture = RobotPosture.MOVING
-        rslt = func(self, *args, **kwargs)
-        self.posture = RobotPosture.STANDING
-        return rslt
-    return wrapper
+            if "require_standing" in features:
+                if self.posture == RobotPosture.LYING:
+                    self._go2_command("stand_up")
+
+            if "trigger_movement" in features:
+                self.posture = RobotPosture.MOVING
+            
+            try:
+                rslt = func(self, *args, **kwargs)
+            finally:
+                self.action_lock.release()
+
+            if "trigger_movement" in features:
+                self.posture = RobotPosture.STANDING
+            return rslt
+        return wrapper
+    return decorator
 
 class Go2Wrapper(RobotWrapper):
     def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
@@ -305,8 +320,9 @@ class Go2Wrapper(RobotWrapper):
         self.running = True
         self.posture = RobotPosture.STANDING
 
-        self.execution_queue = queue.Queue()
+        
         self.active_program = None
+        self.action_lock = threading.Lock()
         self.stop_action_event = threading.Event()
         Go2Action.event = self.stop_action_event
 
@@ -322,8 +338,8 @@ class Go2Wrapper(RobotWrapper):
             print_t(f"[Go2] {response.text}")
 
         # Define the robot skillset
-        self.ll_skillset.add_low_level_skill("stand_up", lambda: self._action('stand_up'), "Stand up")
-        self.ll_skillset.add_low_level_skill("lie_down", lambda: self._action('stand_down'), "Stand down")
+        self.ll_skillset.add_low_level_skill("stand_up", lambda: self._go2_command('stand_up'), "Stand up")
+        self.ll_skillset.add_low_level_skill("lie_down", lambda: self._go2_command('stand_down'), "Stand down")
         self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
         self.ll_skillset.add_low_level_skill("stop", self.stop_action, "Stop current action")
         self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
@@ -357,8 +373,17 @@ class Go2Wrapper(RobotWrapper):
         for skill in high_level_skills:
             self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
 
-        self.execution_thread = threading.Thread(target=self.worker)
-        self.execution_thread.start()
+        self.function_queue = queue.Queue()
+        self.function_thread = threading.Thread(target=self.worker)
+        
+        self.command_queue = queue.Queue()
+        self.command_thread = threading.Thread(target=self.command_sender)
+
+        self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
+        
+        self.pid_yaw = PID(10.0, 0.0, 0.0, 10.0, 10.0, 0.5, 2.0)
+        self.pid_x = PID(2.0, 0.0, 0.1, 10.0, 10.0, 0.5, 2.0)
+        self.pid_y = PID(2.0, 0.0, 0.1, 10.0, 10.0, 0.5, 2.0)
 
     def init_ros_node(self):
         rclpy.init()
@@ -378,13 +403,12 @@ class Go2Wrapper(RobotWrapper):
         if msg.linear.x == 0.0 and msg.linear.y == 0.0 and msg.angular.z == 0.0:
             return
         control = {
-            'command': 'nav',
             'vx': msg.linear.x,
             'vy': msg.linear.y,
             'vyaw': msg.angular.z
         }
 
-        self._send_control(control)
+        self._go2_command("nav", **control)
 
     def append_actions(self, actions: str):
         """
@@ -408,29 +432,36 @@ class Go2Wrapper(RobotWrapper):
             elif action == "done(False)":
                 self.memory.end_inst(False)
                 continue
-            self.execution_queue.put(action)
+            self.function_queue.put(action)
 
     def worker(self):
         while self.running:
-            if not self.execution_queue.empty():
-                action = self.execution_queue.get()
+            try:
+                action = self.function_queue.get(0.1)
                 print_t(f"[Go2] Executing action: {action}")
                 self.active_program = MiniSpecProgram(self, None)
                 self.active_program.parse(action)
                 self.active_program.eval()
-            time.sleep(0.1)
+            except queue.Empty:
+                pass
 
     @overrides
     def start(self) -> bool:
-        self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         self.spin_thread.start()
+        self.function_thread.start()
+        self.command_thread.start()
         self.observation.start()
+
+        self.append_actions("scan('person')")
+        time.sleep(2.0)
+
         return True
 
     @overrides
     def stop(self):
         self.running = False
-        self.execution_thread.join()
+        self.function_thread.join()
+        self.command_thread.join()
         self.observation.stop()
         if self.spin_thread is not None:
             rclpy.shutdown()
@@ -448,16 +479,56 @@ class Go2Wrapper(RobotWrapper):
     def stop_action(self):
         print_t("[Go2] Stopping action...")
         self.memory.stop_action()
-        self.stop_action_event.set()
+        self._go2_command("stop")
         if self.active_program:
             self.active_program.stop()
-        time.sleep(0.05)
-        self.stop_action_event.clear()
 
-    @standing_required
+    def _go2_command(self, command: str, **args):
+        print_t(f"[Go2] Sending command: {command}, args: {args}")
+        control = {
+            "command": command,
+            **args
+        }
+
+        match command:
+            case "stand_up":
+                self.posture = RobotPosture.STANDING
+            case "stand_down":
+                self.posture = RobotPosture.LYING
+            case _:
+                pass
+
+        self.command_queue.put(control)
+
+    def command_sender(self):
+        send_request = lambda control: requests.post(self.robot_url + '/control', json=control, headers={"Content-Type": "application/json"})
+        current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        control = {"command": "stop"}
+        while self.running:
+            try:
+                control = self.command_queue.get(timeout=0.1)
+            except queue.Empty:
+                if control["command"] != "euler":
+                    control = {"command": "stop"}
+
+            if control["command"] == "euler":
+                # Convert to radians and update current_euler
+                current_euler[0] = control.get("roll", 0.0)
+                current_euler[1] = control.get("pitch", 0.0)
+                current_euler[2] = control.get("yaw", 0.0)
+            elif current_euler[0] != 0.0 or current_euler[1] != 0.0 or current_euler[2] != 0.0:
+                current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                print_t("[Go2] Resetting Euler angles to zero")
+                send_request({"command": "euler", "roll": 0.0, "pitch": 0.0, "yaw": 0.0})
+
+            print_t(f"[Go2] Sending control command: {control}")
+            result = send_request(control)
+            print_t(f"[Go2] Command response: {result.status_code}, {result.text}")
+
+    @go2action("require_standing")
     def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
         body_pitch = self.observation.orientation[1]
-        body_yaw = 0
+        body_yaw = 0.0
 
         start_time = time.time()
         while not self.stop_action_event.is_set() and time.time() - start_time < timeout:
@@ -484,62 +555,93 @@ class Go2Wrapper(RobotWrapper):
                 continue
 
             actions = [
-                (lambda: self._action("euler", roll=0, pitch=body_pitch, yaw=body_yaw), 0.1)
+                (lambda: self._go2_command("euler", roll=0, pitch=body_pitch, yaw=body_yaw), 0.1)
             ]
             go2_action = Go2Action(actions)
             go2_action.execute()
 
         return True
 
-    def _action(self, action: str, **args):
-        control = {
-            "command": action,
-            "timeout": 3.0,
-            **args
-        }
-
-        match action:
-            case "stand_up":
-                self.posture = RobotPosture.STANDING
-            case "stand_down":
-                self.posture = RobotPosture.LYING
-            case _:
-                pass
-
-        self._send_control(control)
-
-    def _send_control(self, control: dict):
-        response = requests.post(
-            self.robot_url + "control",
-            json=control,
-            headers={"Content-Type": "application/json"}
-        )
-        if response.status_code != 200:
-            print_t(f"[Go2] Failed to send command: {response.text}")
-
-    @standing_required
-    @trigger_moving
+    @go2action("require_standing, trigger_movement")
     @overrides
     def move(self, dx: float, dy: float) -> bool:
         """
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
-        print(f"-> Move by ({dx}, {dy}) m")
-        self._action("move", dx=dx, dy=dy, body_frame=True, timeout=5.0)
+        initial_x = self.observation.position[0]
+        initial_y = self.observation.position[1]
+        initial_yaw = self.observation.orientation[2]
+
+        target_x = initial_x + dx * math.cos(initial_yaw) - dy * math.sin(initial_yaw)
+        target_y = initial_y + dx * math.sin(initial_yaw) + dy * math.cos(initial_yaw)
+
+        while not self.stop_action_event.is_set():
+            start_time = time.time()
+            current_x = self.observation.position[0]
+            current_y = self.observation.position[1]
+            current_yaw = self.observation.orientation[2]
+
+            distance_to_target = math.sqrt((target_x - current_x) ** 2 + (target_y - current_y) ** 2)
+            if distance_to_target < 0.08:
+                # If we are close enough to the target, stop moving
+                break
+
+            vx = self.pid_x.update(target_x - current_x)
+            vy = self.pid_y.update(target_y - current_y)
+
+            v_body_x = vx * math.cos(current_yaw) + vy * math.sin(current_yaw)
+            v_body_y = -vx * math.sin(current_yaw) + vy * math.cos(current_yaw)
+            # vyaw = self.pid_yaw.update(target_yaw - current_yaw)
+
+            self._go2_command("nav", vx=float(v_body_x), vy=float(v_body_y), vyaw=0.0)
+            elapsed_time = time.time() - start_time
+            sleep_time = max(0, 0.1 - elapsed_time)  # Ensure we don't block for too long
+            time.sleep(sleep_time)
+        self._go2_command("stop")
         return True
 
-    @standing_required
-    @trigger_moving
+    @go2action("require_standing, trigger_movement")
     @overrides
     def rotate(self, deg: float) -> bool:
         """
         Rotates the robot by the specified angle in degrees.
         """
         print_t(f"-> Rotate by {deg} degrees")
-        self._action("rotate", delta_rad=math.radians(deg), timeout=5.0)
+        initial_yaw = self.observation.orientation[2]
+        delta_rad = math.radians(deg)
+
+        accumulated_angle = 0.0
+        previous_yaw = initial_yaw
+
+        while not self.stop_action_event.is_set():
+            start_time = time.time()
+            current_yaw = self.observation.orientation[2]
+            yaw_diff = current_yaw - previous_yaw
+
+            # Normalize yaw difference to the range [-pi, pi]
+            if yaw_diff > math.pi:
+                yaw_diff -= 2 * math.pi
+            elif yaw_diff < -math.pi:
+                yaw_diff += 2 * math.pi
+
+            accumulated_angle += yaw_diff
+            previous_yaw = current_yaw
+
+            remaining_angle = delta_rad - accumulated_angle
+            if abs(remaining_angle) < 0.01 or delta_rad * remaining_angle < 0:
+                # If the remaining angle is small enough or we have overshot the target
+                break
+
+            vyaw = self.pid_yaw.update(remaining_angle)
+            self._go2_command("nav", vx=0.0, vy=0.0, vyaw=vyaw)
+
+            elapsed_time = time.time() - start_time
+            sleep_time = max(0, 0.1 - elapsed_time)  # Ensure we don't block for too long
+            time.sleep(sleep_time)
+        self._go2_command("stop")
         return True
     
-    @standing_required
+    @go2action("require_standing")
     def nod(self) -> bool:
         """
         Nods the robot's head.
@@ -547,30 +649,29 @@ class Go2Wrapper(RobotWrapper):
         print("-> Nod")
         actions = []
         for _ in range(2):  # 2 up/down cycles = 4 total motions
-            actions.append((lambda: self._action("euler", roll=0, pitch=-0.2, yaw=0), 0.5))
-            actions.append((lambda: self._action("euler", roll=0, pitch=0.0, yaw=0), 0.5))
+            actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.3, yaw=0), 1.0))
+            actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 1.0))
         go2_action = Go2Action(actions)
         go2_action.execute()
-        self._action("euler", roll=0, pitch=0.0, yaw=0)
+        self._go2_command("stop")
         return True
     
-    @standing_required
+    @go2action("require_standing")
     def look_up(self) -> bool:
         """
         Looks up by adjusting the robot's head pitch.
         """
         print_t("-> Look up")
         actions = [
-            (lambda: self._action("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
-            for _ in range(15)  # 3 up/down cycles
+            (lambda: self._go2_command("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
+            for _ in range(3)
         ]
         go2_action = Go2Action(actions)
         go2_action.execute()
         print_t("-> Look up end")
         return True
     
-    @standing_required
-    @trigger_moving
+    @go2action("require_standing, trigger_movement")
     def goto_waypoint(self, id: int) -> bool:
         print(f"-> Go to waypoint {id}")
         wp = self.observation.slam_map.get_waypoint(id)
@@ -628,7 +729,7 @@ class Go2Wrapper(RobotWrapper):
             if self.stop_action_event.is_set() or time.time() - start_time > timeout_sec:
                 print_t("Navigation: Stopped")
                 break
-            time.sleep(0.1)
+            time.sleep(0.01)
 
         if not done_event.is_set():
             goal_handle = goal_handle_container.get("handle")

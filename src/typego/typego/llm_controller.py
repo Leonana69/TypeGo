@@ -56,11 +56,11 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        self.s1_loop_thread = threading.Thread(target=self.s1_loop)
-        self.s1_loop_thread.start()
+        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        # self.s1_loop_thread.start()
 
-        self.s2_loop_thread = threading.Thread(target=self.s2_loop)
-        self.s2_loop_thread.start()
+        # self.s2_loop_thread = threading.Thread(target=self.s2_loop)
+        # self.s2_loop_thread.start()
 
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s0_loop_thread.start()
@@ -121,7 +121,7 @@ class LLMController():
 
         s0events = [
             # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
-            S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
+            # S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
             S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
         ]
 
