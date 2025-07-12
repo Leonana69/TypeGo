@@ -41,56 +41,6 @@ class ActionItem:
         if self.status == STATUS_IN_PROGRESS:
             self.end = time.time()
             self.status = STATUS_SUCCESS if result else STATUS_FAILED
-
-# @dataclass
-# class SubtaskItem:
-#     start: float
-#     end: float
-#     content: str
-#     actions: list[ActionItem]
-#     status: str
-
-#     def finish_action(self, result: bool):
-#         if not self.actions:
-#             return
-        
-#         action = self.actions[-1]
-#         action.end = time.time()
-#         action.status = STATUS_SUCCESS if result else STATUS_FAILED
-
-#     def execute_action(self, action: str):
-#         action_item = ActionItem(start=time.time(), end=0.0, content=action, status=STATUS_IN_PROGRESS)
-#         self.actions.append(action_item)
-
-#     def get_in_progress_action(self) -> ActionItem | None:
-#         if not self.actions:
-#             return None
-#         for action in self.actions:
-#             if action.status == STATUS_IN_PROGRESS:
-#                 return action
-#         return None
-    
-#     def is_finished(self) -> bool:
-#         return self.status in (STATUS_SUCCESS, STATUS_FAILED)
-
-#     def _sim(self) -> dict:
-#         js = {
-#             "start": format_time(self.start),
-#             "end": format_time(self.end),
-#             "subtask": self.content,
-#             "status": self.status
-#         }
-#         return js
-    
-#     def _full(self) -> dict:
-#         js = {
-#             "start": format_time(self.start),
-#             "end": format_time(self.end),
-#             "subtask": self.content,
-#             "status": self.status,
-#             "actions": [action._full() for action in self.actions]
-#         }
-#         return js
     
 @dataclass
 class InstructionItem:

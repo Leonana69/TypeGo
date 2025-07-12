@@ -30,8 +30,6 @@ from typego.pid import PID
 
 from typego_interface.msg import WayPointArray
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 GO2_CAM_K = np.array([
     [818.18507419, 0.0, 637.94628188],
     [0.0, 815.32431463, 338.3480119],
@@ -42,12 +40,6 @@ GO2_CAM_D = np.array([[-0.07203219],
                       [-0.05228525],
                       [ 0.05415833],
                       [-0.02288355]], dtype=np.float32)
-
-def make_transform(translation, quaternion):
-    T = np.eye(4)
-    T[:3, :3] = R.from_quat(quaternion).as_matrix()
-    T[:3, 3] = translation
-    return T
 
 class Go2Observation(RobotObservation):
     def __init__(self, robot_info: RobotInfo, node: Node, rate: int = 10):
@@ -110,6 +102,12 @@ class Go2Observation(RobotObservation):
         self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
     def _tf_callback(self, msg: TFMessage):
+        def make_transform(translation, quaternion):
+            T = np.eye(4)
+            T[:3, :3] = R.from_quat(quaternion).as_matrix()
+            T[:3, 3] = translation
+            return T
+
         # Extract position and orientation from the TF message
         for transform in msg.transforms:
             if transform.child_frame_id == "base_link":
@@ -282,8 +280,9 @@ def go2action(feature_str: str = None):
     This will create a Go2Action instance and execute it.
     """
     def decorator(func):
-        features = feature_str.split(",") if feature_str else []
+        features = [f.strip() for f in feature_str.split(",")] if feature_str else []
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
+            print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
             if not self.action_lock.acquire(timeout=0.1):
                 self.stop_action()
                 self.stop_action_event.set()
@@ -294,6 +293,7 @@ def go2action(feature_str: str = None):
             else:
                 self.stop_action_event.clear()
 
+            print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "require_standing" in features:
                 if self.posture == RobotPosture.LYING:
                     self._go2_command("stand_up")
@@ -302,8 +302,10 @@ def go2action(feature_str: str = None):
                 self.posture = RobotPosture.MOVING
             
             try:
+                print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 rslt = func(self, *args, **kwargs)
             finally:
+                print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
                 self.action_lock.release()
 
             if "trigger_movement" in features:
@@ -322,7 +324,7 @@ class Go2Wrapper(RobotWrapper):
 
         
         self.active_program = None
-        self.action_lock = threading.Lock()
+        self.action_lock = threading.RLock()
         self.stop_action_event = threading.Event()
         Go2Action.event = self.stop_action_event
 
@@ -382,8 +384,8 @@ class Go2Wrapper(RobotWrapper):
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         
         self.pid_yaw = PID(10.0, 0.0, 0.0, 10.0, 10.0, 0.5, 2.0)
-        self.pid_x = PID(2.0, 0.0, 0.1, 10.0, 10.0, 0.5, 2.0)
-        self.pid_y = PID(2.0, 0.0, 0.1, 10.0, 10.0, 0.5, 2.0)
+        self.pid_x = PID(2.0, 1.0, 0.1, 10.0, 10.0, 0.5, 2.0)
+        self.pid_y = PID(2.0, 1.0, 0.1, 10.0, 10.0, 0.5, 2.0)
 
     def init_ros_node(self):
         rclpy.init()
@@ -451,10 +453,6 @@ class Go2Wrapper(RobotWrapper):
         self.function_thread.start()
         self.command_thread.start()
         self.observation.start()
-
-        self.append_actions("scan('person')")
-        time.sleep(2.0)
-
         return True
 
     @overrides
@@ -501,12 +499,12 @@ class Go2Wrapper(RobotWrapper):
         self.command_queue.put(control)
 
     def command_sender(self):
-        send_request = lambda control: requests.post(self.robot_url + '/control', json=control, headers={"Content-Type": "application/json"})
+        send_request = lambda control: requests.post(self.robot_url + '/control', json=control, headers={"Content-Type": "application/json"}, timeout=0.3)
         current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         control = {"command": "stop"}
         while self.running:
             try:
-                control = self.command_queue.get(timeout=0.1)
+                control = self.command_queue.get(timeout=0.05)
             except queue.Empty:
                 if control["command"] != "euler":
                     control = {"command": "stop"}
@@ -519,19 +517,26 @@ class Go2Wrapper(RobotWrapper):
             elif current_euler[0] != 0.0 or current_euler[1] != 0.0 or current_euler[2] != 0.0:
                 current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
                 print_t("[Go2] Resetting Euler angles to zero")
-                send_request({"command": "euler", "roll": 0.0, "pitch": 0.0, "yaw": 0.0})
-
-            print_t(f"[Go2] Sending control command: {control}")
-            result = send_request(control)
-            print_t(f"[Go2] Command response: {result.status_code}, {result.text}")
+                try:
+                    send_request({"command": "euler", "roll": 0.0, "pitch": 0.0, "yaw": 0.0})
+                except requests.RequestException as e:
+                    pass
+            try:
+                result = send_request(control)
+                if result.status_code != 200:
+                    print_t(f"[Go2] Command failed: {result.status_code}, {result.text}")
+            except requests.RequestException as e:
+                print_t(f"[Go2] Command request failed: {e}")
+                continue
 
     @go2action("require_standing")
     def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
         body_pitch = self.observation.orientation[1]
         body_yaw = 0.0
 
-        start_time = time.time()
-        while not self.stop_action_event.is_set() and time.time() - start_time < timeout:
+        begin = time.time()
+        while not self.stop_action_event.is_set() and time.time() - begin < timeout:
+            start_time = time.time()
             info = self.get_obj_info(object_name)
 
             if info is None:
@@ -554,11 +559,8 @@ class Go2Wrapper(RobotWrapper):
                 body_yaw = 0
                 continue
 
-            actions = [
-                (lambda: self._go2_command("euler", roll=0, pitch=body_pitch, yaw=body_yaw), 0.1)
-            ]
-            go2_action = Go2Action(actions)
-            go2_action.execute()
+            self._go2_command("euler", roll=0, pitch=round(float(body_pitch), 3), yaw=round(float(body_yaw), 3))
+            time.sleep(max(0, 0.1 - (time.time() - start_time)))
 
         return True
 
@@ -581,22 +583,22 @@ class Go2Wrapper(RobotWrapper):
             current_y = self.observation.position[1]
             current_yaw = self.observation.orientation[2]
 
-            distance_to_target = math.sqrt((target_x - current_x) ** 2 + (target_y - current_y) ** 2)
-            if distance_to_target < 0.08:
-                # If we are close enough to the target, stop moving
+            # Compute error in world frame
+            error_world_x = target_x - current_x
+            error_world_y = target_y - current_y
+
+            # Convert error into body frame
+            error_body_x = error_world_x * math.cos(current_yaw) + error_world_y * math.sin(current_yaw)
+            error_body_y = -error_world_x * math.sin(current_yaw) + error_world_y * math.cos(current_yaw)
+
+            if math.hypot(error_body_x, error_body_y) < 0.08:
                 break
 
-            vx = self.pid_x.update(target_x - current_x)
-            vy = self.pid_y.update(target_y - current_y)
+            vx = self.pid_x.update(error_body_x)
+            vy = self.pid_y.update(error_body_y)
 
-            v_body_x = vx * math.cos(current_yaw) + vy * math.sin(current_yaw)
-            v_body_y = -vx * math.sin(current_yaw) + vy * math.cos(current_yaw)
-            # vyaw = self.pid_yaw.update(target_yaw - current_yaw)
-
-            self._go2_command("nav", vx=float(v_body_x), vy=float(v_body_y), vyaw=0.0)
-            elapsed_time = time.time() - start_time
-            sleep_time = max(0, 0.1 - elapsed_time)  # Ensure we don't block for too long
-            time.sleep(sleep_time)
+            self._go2_command("nav", vx=round(float(vx), 3), vy=round(float(vy), 3), vyaw=0.0)
+            time.sleep(max(0, 0.1 - (time.time() - start_time)))
         self._go2_command("stop")
         return True
 
@@ -628,16 +630,17 @@ class Go2Wrapper(RobotWrapper):
             previous_yaw = current_yaw
 
             remaining_angle = delta_rad - accumulated_angle
+
+            print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
             if abs(remaining_angle) < 0.01 or delta_rad * remaining_angle < 0:
                 # If the remaining angle is small enough or we have overshot the target
                 break
 
             vyaw = self.pid_yaw.update(remaining_angle)
-            self._go2_command("nav", vx=0.0, vy=0.0, vyaw=vyaw)
+            print_t(f"-> vyaw: {vyaw:.2f} rad/s")
+            self._go2_command("nav", vx=0.0, vy=0.0, vyaw=round(float(vyaw), 3))
 
-            elapsed_time = time.time() - start_time
-            sleep_time = max(0, 0.1 - elapsed_time)  # Ensure we don't block for too long
-            time.sleep(sleep_time)
+            time.sleep(max(0, 0.1 - (time.time() - start_time)))
         self._go2_command("stop")
         return True
     
