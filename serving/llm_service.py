@@ -51,7 +51,14 @@ class LLMService(hyrch_serving_pb2_grpc.LLMServiceServicer):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
 
         with torch.no_grad():
-            outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=True, use_cache=True, temperature=temperature)
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                use_cache=True,
+                temperature=temperature,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
             input_len = inputs['input_ids'].shape[1]
             response = self.tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
             info['result'] = response
