@@ -14,9 +14,6 @@ sys.path.append(os.path.join(PROJ_DIR, "proto"))
 import hyrch_serving_pb2
 import hyrch_serving_pb2_grpc
 
-MODEL_TYPE = "ViT-L-14"
-DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 

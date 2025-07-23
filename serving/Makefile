@@ -1,6 +1,7 @@
 .PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build
 
-GPU_OPTIONS=$(shell if [ -f /proc/driver/nvidia/version ]; then echo "--gpus all"; else echo ""; fi)
+GPU_DEVICES=4,5
+GPU_OPTIONS=$(shell if [ -f /proc/driver/nvidia/version ]; then echo "--gpus all -e CUDA_VISIBLE_DEVICES=$(GPU_DEVICES)"; else echo ""; fi)
 
 docker_start:
 	@make docker_stop
