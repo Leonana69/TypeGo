@@ -11,6 +11,7 @@ from typego.robot_wrapper import RobotPosture
 from typego.llm_planner import LLMPlanner
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
+from typego.s2 import S2Plan
 
 class S0Event:
     def __init__(self, description: str, condition: callable, action: callable, priority: int = 0, timeout: float = 3.0):
@@ -42,6 +43,12 @@ class LLMController():
             self.probe
         ]
 
+        self.latest_inst = None
+        self.latest_inst_lock = threading.Lock()
+        self.latest_inst_flag = [False, False, False]  # [s0, s1, s2]
+
+        self.s0_event = threading.Event()
+        self.s0_s1_event = threading.Event()
         self.s1_event = threading.Event()
         self.s2_event = threading.Event()
 
@@ -112,47 +119,63 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
     
-    def s0_loop(self, rate: float = 100.0):
-        delay = 1 / rate
+    # def s0_loop(self, rate: float = 100.0):
+    #     delay = 1 / rate
+    #     while not self.running:
+    #         time.sleep(0.1)
+    #     time.sleep(1.0)
+    #     print_t(f"[C] Starting S0...")
+
+    #     s0events = [
+    #         # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
+    #         S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
+    #         S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
+    #     ]
+
+    #     self.s0_in_progress_event: S0Event | None = None
+    #     event_queue = queue.Queue()
+    #     s0_event_executor_thread = threading.Thread(target=self.s0_event_executor, args=(event_queue,))
+    #     s0_event_executor_thread.start()
+
+    #     while self.running:
+    #         for event in s0events:
+    #             if event.check(self.s0_in_progress_event.priority if self.s0_in_progress_event else 99):
+    #                 if self.s0_in_progress_event is None:
+    #                     print_t(f"[C] New event triggered: {event.description}")
+    #                 else:
+    #                     print_t(f"[C] Canceling {self.s0_in_progress_event.description}... and executing {event.description}")
+    #                     self.robot.stop_action()
+
+    #                 event_queue.put(event)
+    #         time.sleep(delay)
+
+    def s0_loop(self):
         while not self.running:
             time.sleep(0.1)
         time.sleep(1.0)
         print_t(f"[C] Starting S0...")
 
-        s0events = [
-            # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
-            S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
-            S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
-        ]
-
-        self.s0_in_progress_event: S0Event | None = None
-        event_queue = queue.Queue()
-        s0_event_executor_thread = threading.Thread(target=self.s0_event_executor, args=(event_queue,))
-        s0_event_executor_thread.start()
-
         while self.running:
-            for event in s0events:
-                if event.check(self.s0_in_progress_event.priority if self.s0_in_progress_event else 99):
-                    if self.s0_in_progress_event is None:
-                        print_t(f"[C] New event triggered: {event.description}")
-                    else:
-                        print_t(f"[C] Canceling {self.s0_in_progress_event.description}... and executing {event.description}")
-                        self.robot.stop_action()
+            self.s0_event.wait()
+            print_t(f"[S0] Received S0 event, processing...")
+            self.s0_event.clear()
+            new_inst = self.get_instruction(0)
+            plan = self.planner.s0_plan(new_inst)
+            print_t(f"[S0] Get plan: {plan}")
+            self.robot.append_actions(plan)
+            self.s0_s1_event.set()
 
-                    event_queue.put(event)
-            time.sleep(delay)
-
-    def s0_event_executor(self, event_queue: queue.Queue[S0Event]):
-        while self.running:
-            try:
-                event = event_queue.get(timeout=1)
-                self.s0_control.clear()
-                self.s0_in_progress_event = event
-                event.execute()
-                self.s0_in_progress_event = None
-                self.s0_control.set()
-            except queue.Empty:
-                continue
+    # def s0_event_executor(self, event_queue: queue.Queue[S0Event]):
+    #     while self.running:
+    #         try:
+    #             event = event_queue.get(timeout=1)
+    #             self.s0_control.clear()
+    #             self.s0_in_progress_event = event
+    #             event.execute()
+    #             self.s0_in_progress_event = None
+    #             self.s0_control.set()
+    #         except queue.Empty:
+    #             continue
 
     def s1_loop(self, rate: float = 0.5):
         delay = 1 / rate
@@ -160,22 +183,30 @@ class LLMController():
             time.sleep(0.1)
         time.sleep(1.0)
         print_t(f"[C] Starting S1...")
+
         while self.running:
             start_time = time.time()
-            plan = self.planner.s1_plan()
+
+            new_inst = self.get_instruction(1)
+            if new_inst is None:
+                self.s0_s1_event.wait(timeout=100)
+                time.sleep(0.01)
+                self.s0_s1_event.clear()
+
+            plan = self.planner.s1_plan(new_inst)
 
             # pause if s0 is processing
-            if not self.s0_control.is_set():
-                print_t(f"[C] S0 is processing, waiting...")
-                self.s0_control.wait()
+            # if not self.s0_control.is_set():
+            #     print_t(f"[C] S0 is processing, waiting...")
+            #     self.s0_control.wait()
 
-            self.robot.append_actions(plan)
+            # self.robot.append_actions(plan)
             print_t(f"[S1] Plan: {plan}")
+            action = S2Plan.CURRENT.process_s1_response(plan)
+            print_t(f"[S1] Action: {action}")
             
-            elapsed = time.time() - start_time
-            sleep_time = max(0, delay - elapsed)
-            if sleep_time > 0:
-                self.s1_event.wait(timeout=sleep_time)
+            sleep_time = max(0, delay - (time.time() - start_time))
+            self.s1_event.wait(timeout=100)
             self.s1_event.clear()
 
     def s2_loop(self, rate: float = 0.2):
@@ -186,24 +217,30 @@ class LLMController():
         print_t(f"[C] Starting S2...")
 
         while self.running:
-            start_time = time.time()
-            plan = self.planner.s2_plan()
-            print_t(f"[S2] Plan: {plan}")
-
-            # pause if s0 is processing
-            if not self.s0_control.is_set():
-                print_t(f"[C] S0 is processing, waiting...")
-                self.s0_control.wait()
-
-            self.robot.memory.process_s2_response(plan)
-
-            elapsed = time.time() - start_time
-            sleep_time = max(0, delay - elapsed)
-            if sleep_time > 0:
-                self.s2_event.wait(timeout=500.0)
+            self.s2_event.wait()
             self.s2_event.clear()
 
-    def user_instruction(self, inst: str):
-        self.robot.memory.add_inst(inst)
-        self.s1_event.set()  # Trigger the S1 loop to process the new instruction
-        self.s2_event.set()  # Trigger the S2 loop to process the new instruction
+            new_inst = self.get_instruction(2)
+            plan = self.planner.s2_plan(new_inst)
+            print_t(f"[S2] Plan: {plan}")
+
+            # process plan ...
+            S2Plan.parse(new_inst, plan)
+            
+
+    def get_instruction(self, system_id: int) -> Optional[str]:
+        with self.latest_inst_lock:
+            if not self.latest_inst_flag[system_id]:
+                self.latest_inst_flag[system_id] = True
+                return self.latest_inst
+            else:
+                return None
+
+    def put_instruction(self, inst: str):
+        with self.latest_inst_lock:
+            print_t(f"[C] Received instruction: {inst}")
+            self.latest_inst = inst
+            self.latest_inst_flag = [False, False, False]  # [s0, s1, s2]
+            self.s0_event.set()
+            self.s1_event.set()
+            self.s2_event.set()

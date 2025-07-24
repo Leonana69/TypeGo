@@ -1,0 +1,118 @@
+# EXAMPLE 1
+## INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "standing", "current_waypoint_id": 2}
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "label": "room"},
+	{"id": 2, "label": "room"},
+	{"id": 3, "label": "hallway"}
+]
+
+## OUTPUT
+goto_waypoint(3)
+
+
+------------
+# EXAMPLE 2
+## INSTRUCTION
+Play with the person.
+
+## ROBOT STATE
+State: {"time": "14:16:12", "posture": "moving", "current_waypoint_id": 5}
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "label": "room"},
+	{"id": 2, "label": "room"},
+	{"id": 3, "label": "hallway"},
+	{"id": 8, "label": "hallway"},
+]
+
+## OUTPUT
+goto_object("person")
+
+
+------------
+# EXAMPLE 3
+## INSTRUCTION
+Turn around.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "standing", "current_waypoint_id": 2}
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "label": "room"},
+	{"id": 2, "label": "room"},
+	{"id": 3, "label": "hallway"}
+]
+
+## OUTPUT
+rotate(180)
+
+
+------------
+# EXAMPLE 4
+## INSTRUCTION
+Find the chair behind you.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 5}
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"}
+]
+
+## OUTPUT
+rotate(180)
+
+
+------------
+# EXAMPLE 5
+## INSTRUCTION
+Hello.
+
+## ROBOT STATE
+State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 3}
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "label": "room"},
+	{"id": 2, "label": "room"},
+	{"id": 3, "label": "hallway"}
+]
+
+## OUTPUT
+nod()

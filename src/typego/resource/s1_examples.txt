@@ -3,28 +3,43 @@
 Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
+State: {"time": "14:16:10", "posture": "standing", "waypoint_id": 3}
 
-Plan for Current Instruction:
-```
-start_location = 1
-target_waypoints = [3, 8, 11, 12]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if see a person:
-		report("There is someone at waypoint " + str(waypoint))
-		break
-goto_waypoint(start_location)
-```
+Plan for Current State:
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 1,
+		"next_waypoint": 8
+	},
 
-Action History for Current Instruction: [
+	"global_conditions": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"local_data_update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"transitions": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
     {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
     {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
@@ -38,7 +53,10 @@ Waypoints: [
 ]
 
 ## OUTPUT
-stop();log('I see a person on my way to waypoint 8.')
+{
+	"next_action": "continue()",
+	"transition": null
+}
 
 
 ------------
@@ -47,29 +65,43 @@ stop();log('I see a person on my way to waypoint 8.')
 Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:16:12", "posture": "moving", "waypoint_id": 5}
+State: {"time": "14:16:50", "posture": "standing", "waypoint_id": 8}
 
-Plan for Current Instruction:
-```
-start_location = 1
-target_waypoints = [3, 8, 11, 12]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if see a person:
-		report("There is someone around waypoint " + str(waypoint))
-		break
-goto_waypoint(start_location)
-```
+Plan for Current State:
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
 
-Action History for Current Instruction: [
+	"global_conditions": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"local_data_update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"transitions": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
     {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
-    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "stopped"},
-    {"start": "14:16:12", "end": "N/A", "action": "log('I see a person on my way to waypoint 8.')", "status": "success"}
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"}
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
@@ -83,7 +115,10 @@ Waypoints: [
 ]
 
 ## OUTPUT
-goto_waypoint(1)
+{
+	"next_action": "goto_waypoint(11)",
+	"transition": null
+}
 
 
 ------------
@@ -92,28 +127,44 @@ goto_waypoint(1)
 Go around the hallway and check if there is anyone there. Then report back to me.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
+State: {"time": "14:17:20", "posture": "moving", "waypoint_id": 8}
 
-Plan for Current Instruction:
-```
-start_location = 1
-target_waypoints = [3, 8, 11, 12]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if see a person:
-		report("There is someone at waypoint " + str(waypoint))
-		break
-goto_waypoint(start_location)
-```
+Plan for Current State:
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
 
-Action History for Current Instruction: [
+	"global_conditions": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"local_data_update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"transitions": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
     {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
-    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"},
+	{"start": "14:16:50", "end": "N/A", "action": "goto_waypoint(11)", "status": "in-progress"}
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "person", "x": 0.45, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
@@ -127,73 +178,49 @@ Waypoints: [
 ]
 
 ## OUTPUT
-keep()
-
+{
+	"next_action": "stop()",
+	"transition": "PROCESS_PERSON"
+}
 
 ------------
 # EXAMPLE 4
 ## INSTRUCTION
-Go around the hallway and check if there is anyone there. Then report back to me.
+None
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 5}
+State: {"time": "14:17:40", "posture": "standing", "waypoint_id": 8}
 
-Plan for Current Instruction:
-```
-start_location = 1
-target_waypoints = [3, 8, 11, 12]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if see a person:
-		report("There is someone at waypoint " + str(waypoint))
-		break
-goto_waypoint(start_location)
-```
+Plan for Current State:
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
 
-Action History for Current Instruction: [
+	"global_conditions": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"PROCESS_PERSON": {
+			"action": "take a picture",
+			"transitions": ["RETURN_HOME: always"]
+		},
+	}
+}
+
+Action History for Current State: [
     {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
-    {"start": "14:16:08", "end": "14:17:12", "action": "goto_waypoint(8)", "status": "success"},
-    {"start": "14:17:16", "end": "14:17:59", "action": "goto_waypoint(11)", "status": "success"},
-    {"start": "14:18:08", "end": "14:18:45", "action": "goto_waypoint(12)", "status": "success"},
-    {"start": "14:18:55", "end": "14:19:45", "action": "goto_waypoint(1)", "status": "success"},
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"},
+	{"start": "14:16:50", "end": "14:17:30", "action": "goto_waypoint(11)", "status": "stopped"}
 ]
 
 ## SCENE DESCRIPTION
 Objects: [
-    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
-	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
-]
-
-## OUTPUT
-done(True)
-
-
-------------
-# EXAMPLE 5
-## INSTRUCTION
-Go around the hallway and check if there is anyone there. Then report back to me.
-
-## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "waypoint_id": 3}
-
-Plan for Current Instruction: None
-
-Action History for Current Instruction: [
-    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "person", "x": 0.45, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
@@ -207,112 +234,7 @@ Waypoints: [
 ]
 
 ## OUTPUT
-goto_waypoint(3)
-
-
-------------
-# EXAMPLE 6
-## INSTRUCTION
-I'm hungry.
-
-## ROBOT STATE
-State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 3}
-
-Plan for Current Instruction: None
-
-Action History for Current Instruction: [
-    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
-	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
-]
-
-## OUTPUT
-goto_waypoint(2)
-
-
-------------
-# EXAMPLE 7
-## INSTRUCTION
-I'm hungry.
-
-## ROBOT STATE
-State: {"time": "14:16:08", "posture": "lying", "waypoint_id": 3}
-
-Plan for Current Instruction:
-```
-target_waypoints = [1, 2]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if find some food around:
-		report("Found food at waypoint " + str(waypoint))
-		break
-```
-
-Action History for Current Instruction: [
-    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
-    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
-	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
-]
-
-## OUTPUT
-stop();goto_waypoint(1)
-
-
-------------
-# EXAMPLE 8
-## INSTRUCTION
-Idle
-
-## ROBOT STATE
-State: {"time": "14:16:08", "posture": "standing", "waypoint_id": 3}
-
-Plan for Current Instruction: None
-
-Action History for Current Instruction: [
-    {"start": "14:15:53", "end": "14:16:08", "action": "stand_up()", "status": "success"},
-]
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
-	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
-]
-
-## OUTPUT
-look_object("person")
+{
+	"next_action": "take_picture()",
+	"transition": "RETURN_HOME"
+}

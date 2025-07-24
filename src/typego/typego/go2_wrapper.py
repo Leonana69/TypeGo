@@ -423,16 +423,10 @@ class Go2Wrapper(RobotWrapper):
             if not action:
                 continue
 
-            if action == "keep()":
+            if action == "continue()":
                 continue
             elif action == "stop()":
                 self.stop_action()
-                continue
-            elif action == "done(True)":
-                self.memory.end_inst(True)
-                continue
-            elif action == "done(False)":
-                self.memory.end_inst(False)
                 continue
             self.function_queue.put(action)
 
@@ -470,13 +464,12 @@ class Go2Wrapper(RobotWrapper):
         js = {
             "time": time.strftime("%H:%M:%S", time.localtime(time.time())),
             "posture": self.posture.value,
-            "waypoint_id": self.observation.slam_map.get_nearest_waypoint_id((self.observation.position[0], self.observation.position[1])),
+            "current_waypoint_id": self.observation.slam_map.get_nearest_waypoint_id((self.observation.position[0], self.observation.position[1])),
         }
         return json.dumps(js)
 
     def stop_action(self):
         print_t("[Go2] Stopping action...")
-        self.memory.stop_action()
         self._go2_command("stop")
         if self.active_program:
             self.active_program.stop()

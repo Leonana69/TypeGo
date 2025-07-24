@@ -67,7 +67,7 @@ class TypeFly:
         Thread(target=self.stream_from_queue, daemon=True).start()
 
     def ui_process_message(self, message: str, history: list):
-        print_t(f"[S] Receiving task description: {message}, history: {history}")
+        # print_t(f"[S] Receiving task description: {message}, history: {history}")
         self.history = history
         if message == "exit":
             self.running = False
@@ -75,7 +75,7 @@ class TypeFly:
         elif len(message) == 0:
             return gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
         else:
-            self.llm_controller.user_instruction(message)
+            self.llm_controller.put_instruction(message)
             return gr.ChatMessage(role="assistant", content="Okay! Working on it...")
 
     def stream_from_queue(self):

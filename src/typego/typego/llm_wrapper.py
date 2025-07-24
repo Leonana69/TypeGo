@@ -5,11 +5,13 @@ import cv2
 from numpy import ndarray
 from PIL import Image
 from io import BytesIO
-import base64
+import base64, json, requests
 
 class ModelType(Enum):
     GPT4O = "gpt-4o"
+    LOCAL_1B = "local-1b"
 
+EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
 CHAT_LOG_FILE = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/chat_log.txt"
 
 class LLMWrapper:
@@ -17,7 +19,7 @@ class LLMWrapper:
         self.temperature = temperature
         self.gpt_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    def request(self, prompt, model_type: ModelType=ModelType.GPT4O, stream: bool=False, image: cv2.Mat | Image.Image | None=None) -> str | Stream[ChatCompletion.ChatCompletionChunk]:        
+    def request(self, prompt, model_type: ModelType=ModelType.GPT4O, image: cv2.Mat | Image.Image | None=None) -> str | Stream[ChatCompletion.ChatCompletionChunk]:        
         content = [{
             "type": "input_text",
             "text": prompt
@@ -36,20 +38,33 @@ class LLMWrapper:
                 "image_url": f"data:image/jpeg;base64,{image_data}"
             })
 
-        response = self.gpt_client.responses.create(
-            model=model_type.value,
-            input=[{"role": "user", "content": content}],
-            temperature=self.temperature,
-            stream=stream,
-        )
+        if model_type == ModelType.LOCAL_1B:
+            json_data = {
+                'robot_info': "robot_1",
+                'service_type': 'llm',
+                'prompt': prompt,
+                'max_new_tokens': 10
+            }
+            http_load = {
+                'json_data': (None, json.dumps(json_data))
+            }
+
+            response = requests.post(f"http://{EDGE_SERVICE_IP}:{50049}/process", files=http_load)
+            response_text = response.json().get("result", "").split('\n\n\n')[0].strip()
+
+        else:
+            response = self.gpt_client.responses.create(
+                model=model_type.value,
+                input=[{"role": "user", "content": content}],
+                temperature=self.temperature,
+                stream=False
+            )
+            response_text = response.output_text
 
         with open(CHAT_LOG_FILE, "a") as f:
             # remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
             remove_leading_prompt = prompt
             f.write(remove_leading_prompt + "\n---\n")
-            if not stream:
-                f.write(response.model_dump_json(indent=2) + "\n---\n")
+            f.write(response_text + "\n---\n")
 
-        if stream:
-            return response
-        return response.output_text
+        return response_text

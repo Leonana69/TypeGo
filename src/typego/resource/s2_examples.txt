@@ -1,30 +1,13 @@
 # EXAMPLE 1
 ## USER INSTRUCTION
-Go around the hallway and check if there is anyone there. Then report back to me.
+Check if there is any person in the hallway, if so take a picture of him and report the message. Go back to the room after that.
 
 ## ROBOT STATE
-State: {"time": "12:10:45", "posture": "moving", "waypoint_id": 1}
+State: {"time": "12:10:45", "posture": "moving", "current_waypoint_id": 1}
 
 Instruction History: [
-	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
-	{"start": "12:09:15", "end": "N/A", "inst": "Go around the hallway and check if there is anyone there. Then report back to me.", "status": "in_progress"}
-]
-
-Plan for In-Progress Instruction:
-```
-start_location = 1
-target_waypoints = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-for waypoint in target_waypoints:
-	goto_waypoint(waypoint)
-	if see a person:
-		report("There is someone around waypoint " + str(waypoint))
-		break
-goto_waypoint(start_location)
-```
-
-Action History for In-Progress Instruction: [
-	{"start": "12:09:15", "end": "12:10:45", "action": "goto_waypoint(3)", "status": "success"},
-	{"start": "12:10:45", "end": "N/A", "action": "goto_waypoint(4)", "status": "in_progress"}
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:51", "end": "N/A", "content": "Dance for me.", "status": "in_progress"}
 ]
 
 ## SCENE DESCRIPTION
@@ -39,42 +22,88 @@ Waypoints: [
     {"id": 1, "loc": [-1.02, 0.68], "label": "room"},
     {"id": 2, "loc": [-4.06, 0.64], "label": "hallway"},
     {"id": 3, "loc": [-6.49, 0.01], "label": "hallway"},
-    {"id": 4, "loc": [-9.05, -0.49], "label": "hallway"},
-    {"id": 5, "loc": [-10.17, 1.88], "label": "hallway"},
-    {"id": 6, "loc": [-10.52, 4.6], "label": "hallway"},
+	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
     {"id": 7, "loc": [-10.66, 7.48], "label": "hallway"},
     {"id": 8, "loc": [-11.61, 9.68], "label": "hallway"},
-    {"id": 9, "loc": [-8.0, 9.49], "label": "hallway"},
-    {"id": 10, "loc": [-5.44, 10.08], "label": "hallway"},
-    {"id": 11, "loc": [-4.55, 7.21], "label": "hallway"},
     {"id": 12, "loc": [-4.14, 4.57], "label": "hallway"},
 ]
 
 ## OUTPUT
-{
-    "reason": "The currently in-progress task is to go around the hallway and check if there is anyone there. The robot is currently at waypoint 4 and has successfully reached waypoint 3. The current plan looks good and can continue.",
-    "interrupt_current_task": false,
-    "new_plan": ""
-}
+A new instruction is received, so the in-progress task (2) will be stopped since the new instruction does not explicitly say the in-progress task should be resumed. The robot will start executing the new task.
 
+The robot is currently at waypoint 1, labeled "room", and needs to search for any person in the hallway. There are no people in the immediate scene description, so the robot should navigate through the waypoints labeled "hallway" to look for a person. If a person is detected, the robot must stop, take a picture, and report the message. After that, or if no person is found at all, the robot should return to its original waypoint (1).
+
+To implement this behavior, we define:
+- `target_waypoints`: a list of hallway waypoints to visit.
+- `start_waypoint`: the robot’s current location (1).
+- A state machine:
+  - `INIT` to transition into `GOTO_NEXT`.
+  - `GOTO_NEXT` to visit waypoints in sequence and update `next_waypoint`.
+  - `PROCESS_PERSON` as a global condition when a person is seen.
+  - `RETURN_HOME` and `DONE` to wrap up the task.
+
+```json
+{
+	"instruction_actions": "stop(2);new()",
+	"local_data": {
+		"target_waypoints": [2, 3, 4, 7, 8, 12],
+		"start_waypoint": 1,
+		"current_index": 0,
+		"next_waypoint": 2
+	},
+
+	"global_conditions": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"states": {
+		"INIT": {
+			"action": null,
+			"transitions": ["GOTO_NEXT: always"]
+		},
+
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"local_data_update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"transitions": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+
+		"PROCESS_PERSON": {
+			"action": "take a picture, then report the message",
+			"transitions": ["RETURN_HOME: always"]
+		},
+
+		"RETURN_HOME": {
+			"action": "go back to start_location",
+			"transitions": ["DONE: always"]
+		},
+
+		"DONE": {
+			"action": null,
+			"transitions": []
+		}
+	}
+}
+```
 
 # EXAMPLE 2
 ## USER INSTRUCTION
-I'm hungry.
+Play with the person for 3mins.
 
 ## ROBOT STATE
-State: {"time": "12:12:52", "posture": "standing", "waypoint_id": 1}
+State: {"time": "12:12:52", "posture": "standing", "current_waypoint_id": 1}
 
 Instruction History: [
-	{"start": "12:07:38", "end": "12:09:43", "inst": "Play with the person", "status": "success"},
-	{"start": "12:09:15", "end": "12:12:12", "inst": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"}
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"}
 ]
 
-Plan for In-Progress Instruction: None
-
-Action History for In-Progress Instruction: []
-
-## SCENE DESCRIPTION
+## SCENE DESCRIPTION dd
 Objects: [
 	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
 	{"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
@@ -90,8 +119,83 @@ Waypoints: [
 ]
 
 ## OUTPUT
+A new instruction is received and there is no in-progress task, so the robot can immediately start executing the new task.
+
+The user asked the robot to play with the person for 3 minutes. Based on the scene description, a person is detected nearby at a distance of only 0.62 meters. The robot does not need to search for the person—it can immediately engage.
+
+The behavior plan involves:
+- Starting in an `INIT` state and transitioning into `ENGAGE_PERSON`.
+- In `ENGAGE_PERSON`, the robot walks to the person and says hello, and we optionally mark `person_found = true` for future extensibility.
+- In `PLAY`, the robot plays with the person (dancing or following).
+- After 3 minutes have passed, the robot transitions to `DONE`.
+
+We assume the agent system can monitor elapsed time since task start to trigger the `"3mins past since the task started"` transition condition.
+
+```json
 {
-    "reason": "There is no in-progress instruction and the user is given a new instruction, so I will generate a new plan. The user is hungry, I should help to find some food. There is only one room in the scene, so I should explore the room and try to find some food there. Then according to the map, I will go to waypoints 1, 2, and 3 in order to find food.",
-    "interrupt_current_task": false,
-    "new_plan": "target_waypoints = [1, 2, 3]\nfor waypoint in target_waypoints:\n\tgoto_waypoint(waypoint)\n\tif find some food around:\n\t\treport(\"Found food at waypoint \" + str(waypoint))\n\t\tbreak\n"
+	"instruction_actions": "new()",
+	"local_data": {},
+	"global_conditions": [],
+
+	"states": {
+		"INIT": {
+			"action": null,
+			"transitions": ["ENGAGE_PERSON: always"]
+		},
+
+		"ENGAGE_PERSON": {
+			"action": "walk to person, say hello",
+			"transitions": ["PLAY: always"]
+		},
+
+		"PLAY": {
+			"action": "do a fun dance or follow the person",
+			"transitions": [
+				"DONE: 3mins past since the task started"
+			]
+		},
+
+		"DONE": {
+			"action": null,
+			"transitions": []
+		}
+	}
 }
+```
+
+# EXAMPLE 3
+## USER INSTRUCTION
+None
+
+## ROBOT STATE
+State: {"time": "12:12:52", "posture": "standing", "current_waypoint_id": 1}
+
+Instruction History: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"},
+	{"id": "3", "start": "13:12:34", "end": "13:14:46", "content": "Play with the person", "status": "paused"}
+]
+
+## SCENE DESCRIPTION dd
+Objects: [
+	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
+	{"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
+	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 5, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 6, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+No new instruction is received, but there is a paused task (3) recently. The robot should resume this task.
+
+```json
+{
+	"instruction_actions": "continue(3)"
+}
+```

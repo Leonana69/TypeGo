@@ -3,6 +3,7 @@ import os
 from typego.llm_wrapper import LLMWrapper, ModelType
 from typego.utils import print_t
 from typego.robot_wrapper import RobotWrapper
+from typego.s2 import S2Plan
 
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
@@ -14,8 +15,13 @@ class LLMPlanner():
         self.llm = LLMWrapper()
         self.model_type = model_type
 
+        S2Plan.init_default()
+
         with open(os.path.join(CURRENT_DIR, f"./resource/prompt_probe.txt"), "r") as f:
             self.prompt_probe = f.read()
+
+        self.s0_prompt = open(os.path.join(CURRENT_DIR, f"./resource/s0_prompt.txt"), "r").read()
+        self.s0_examples = open(os.path.join(CURRENT_DIR, f"./resource/s0_examples.txt"), "r").read()
 
         self.s1_prompt = open(os.path.join(CURRENT_DIR, f"./resource/s1_prompt.txt"), "r").read()
         self.s1_user_guidelines = open(os.path.join(CURRENT_DIR, f"./resource/s1_user_guidelines.txt"), "r").read()
@@ -28,7 +34,33 @@ class LLMPlanner():
     def set_robot(self, robot: RobotWrapper):
         self.robot = robot
 
-    def s1_plan(self) -> str:
+    def s0_plan(self, inst) -> str:
+        robot_skills = ""
+        robot_skills += f"#### Low-level skills\n"
+        robot_skills += str(self.robot.ll_skillset._sim())
+        if self.robot.hl_skillset is not None:
+            robot_skills += f"\n#### High-level skills\n"
+            robot_skills += str(self.robot.hl_skillset._sim())
+
+        state = "State: " + self.robot.get_state() + "\n\n"
+
+        scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
+        scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
+
+        prompt = self.s0_prompt.format(example_plans=self.s0_examples,
+                                            user_instruction=inst,
+                                            robot_skills=robot_skills,
+                                            robot_state=state,
+                                            scene_description=scene_description)
+
+        ret = self.llm.request(prompt, ModelType.LOCAL_1B)
+        with open(CHAT_LOG_DIR + "s0_log.txt", "a") as f:
+            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt += ret
+            f.write(remove_leading_prompt + "\n---\n")
+        return ret
+
+    def s1_plan(self, inst) -> str:
         robot_skills = ""
         robot_skills += f"#### Low-level skills\n"
         robot_skills += str(self.robot.ll_skillset)
@@ -37,10 +69,9 @@ class LLMPlanner():
             robot_skills += str(self.robot.hl_skillset)
 
         state = "State: " + self.robot.get_state() + "\n\n"
-        state += "Plan for Current Instruction: " + self.robot.memory.get_current_plan_str() + "\n\n"
-        state += "Action History for Current Instruction: " + self.robot.memory.get_history_action_str() + "\n\n"
-
-        inst = self.robot.memory.get_current_inst_str()
+        print_t(f"[S1] Current S2: {S2Plan.CURRENT.content}")
+        state += "Plan for Current State: " + S2Plan.CURRENT.get_s1_input() + "\n\n"
+        state += "Action History for Current Instruction: " + str(S2Plan.CURRENT.action_list) + "\n\n"
 
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
@@ -64,9 +95,7 @@ class LLMPlanner():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2_plan(self) -> str:
-        inst = self.robot.memory.get_current_inst_str()
-
+    def s2_plan(self, inst) -> str:
         robot_skills = ""
         robot_skills += f"#### Low-level skills\n"
         robot_skills += str(self.robot.ll_skillset._sim())
@@ -74,13 +103,11 @@ class LLMPlanner():
             robot_skills += f"\n#### High-level skills\n"
             robot_skills += str(self.robot.hl_skillset._sim())
 
+        state = "State: " + self.robot.get_state() + "\n\n"
+        state += "Instruction History: " + S2Plan.get_history_sorted_by_time() + "\n\n"
+
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
-
-        state = "State: " + self.robot.get_state() + "\n\n"
-        state += "Instruction History: " + self.robot.memory.get_inst_list_str() + "\n\n"
-        state += "Plan for In-Progress Instruction: " + self.robot.memory.get_current_plan_str() + "\n\n"
-        state += "Action History for In-Progress Instruction: " + self.robot.memory.get_history_action_str() + "\n\n"
 
         prompt = self.s2_prompt.format(user_guidelines=self.s2_user_guidelines,
                                             example_plans=self.s2_examples,
@@ -96,6 +123,39 @@ class LLMPlanner():
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
+    
+    # def s2_plan(self) -> str:
+    #     inst = self.robot.memory.get_current_inst_str()
+
+    #     robot_skills = ""
+    #     robot_skills += f"#### Low-level skills\n"
+    #     robot_skills += str(self.robot.ll_skillset._sim())
+    #     if self.robot.hl_skillset is not None:
+    #         robot_skills += f"\n#### High-level skills\n"
+    #         robot_skills += str(self.robot.hl_skillset._sim())
+
+    #     scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
+    #     scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
+
+    #     state = "State: " + self.robot.get_state() + "\n\n"
+    #     state += "Instruction History: " + self.robot.memory.get_inst_list_str() + "\n\n"
+    #     state += "Plan for In-Progress Instruction: " + self.robot.memory.get_current_plan_str() + "\n\n"
+    #     state += "Action History for In-Progress Instruction: " + self.robot.memory.get_history_action_str() + "\n\n"
+
+    #     prompt = self.s2_prompt.format(user_guidelines=self.s2_user_guidelines,
+    #                                         example_plans=self.s2_examples,
+    #                                         user_instruction=inst,
+    #                                         robot_skills=robot_skills,
+    #                                         robot_state=state,
+    #                                         scene_description=scene_description)
+
+    #     # print_t(f"[S2] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
+    #     ret = self.llm.request(prompt, self.model_type, image=self.robot.observation.slam_map.get_map())
+    #     with open(CHAT_LOG_DIR + "s2_log.txt", "a") as f:
+    #         remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+    #         remove_leading_prompt += ret
+    #         f.write(remove_leading_prompt + "\n---\n")
+    #     return ret
 
     def probe(self, query: str) -> str:
         prompt = self.prompt_probe.format(scene_description=self.robot.get_obj_list_str(), query=query)

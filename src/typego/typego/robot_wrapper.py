@@ -15,7 +15,6 @@ from typego.robot_info import RobotInfo
 from typego.yolo_client import ObjectInfo
 from typego.skill_item import SKILL_RET_TYPE
 from typego.utils import evaluate_value
-from typego.memory import RobotMemory
 
 from typego_interface.msg import WayPointArray, WayPoint
 
@@ -99,7 +98,8 @@ class SLAMMap:
 
         waypoint_list = "[\n"
         for waypoint in self.waypoints.waypoints:
-            waypoint_list += (f"    {{\"id\": {waypoint.id}, \"loc\": [{round(waypoint.x, 2)}, {round(waypoint.y, 2)}], \"label\": \"{waypoint.label}\"}},\n")
+            # waypoint_list += (f"    {{\"id\": {waypoint.id}, \"loc\": [{round(waypoint.x, 2)}, {round(waypoint.y, 2)}], \"label\": \"{waypoint.label}\"}},\n")
+            waypoint_list += (f"    {{\"id\": {waypoint.id}, \"label\": \"{waypoint.label}\"}},\n")
         waypoint_list += "]"
         return waypoint_list
 
@@ -284,7 +284,6 @@ class RobotObservation(ABC):
 class RobotWrapper(ABC):
     def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: list[callable]):
         self.robot_info = robot_info
-        self.memory = RobotMemory(robot_info)
         self._observation = observation
         self._user_log = controller_func[0]
         self._probe = controller_func[1]
