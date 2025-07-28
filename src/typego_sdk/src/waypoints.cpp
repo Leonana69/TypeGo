@@ -182,6 +182,7 @@ private:
         int robot_cy = (y - grid.info.origin.position.y) / grid.info.resolution;
 
         double min_dist = std::numeric_limits<double>::max();
+        bool valid_waypoint_found = true;
         for (auto &wp : waypoints_) {
             // skip if the absolute distance is greater than threshold
             if ((x - wp.x) * (x - wp.x) + (y - wp.y) * (y - wp.y) > threshold_distance_meters_ * threshold_distance_meters_) {
@@ -195,10 +196,12 @@ private:
             if (dist >= 0) {
                 double meters = dist * grid.info.resolution;
                 min_dist = std::min(min_dist, meters);
+            } else {
+                valid_waypoint_found = false;  // No valid path to this waypoint
             }
         }
 
-        if (min_dist > threshold_distance_meters_) {
+        if (min_dist > threshold_distance_meters_ && valid_waypoint_found) {
             RCLCPP_INFO(this->get_logger(), "Adding new waypoint at (%.2f, %.2f)", x, y);
 
             // First process the latest image if available
