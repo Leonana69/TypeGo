@@ -75,9 +75,25 @@ class S2Plan:
         cls.ID_COUNTER += 1
 
         default_plan.local_data = {}
-        default_plan.global_conditions = []
-        default_plan.states = {"INIT": {"action": "Idle/Bootstrap", "transitions": []}}
-        default_plan.current_state = "INIT"
+        default_plan.global_conditions = [
+            "GREET_PERSON: see any person",
+            "LOOK_AROUND: see any interesting object"
+        ]
+        default_plan.states = {
+            "IDLE": {
+                "action": None,
+                "transitions": []
+            },
+            "GREET_PERSON": {
+                "action": "look at the person and nod",
+                "transitions": ["IDLE: always"]
+            },
+            "LOOK_AROUND": {
+                "action": "look around for interesting things",
+                "transitions": ["IDLE: always"]
+            }
+        }
+        default_plan.current_state = "IDLE"
 
         default_plan.start_time = time.time()
         default_plan.end_time = None
@@ -163,14 +179,16 @@ class S2Plan:
             self.end_time = time.time()
             S2Plan.CURRENT = None
 
-    def process_s1_response(self, response: str) -> str:
+    def process_s1_response(self, response: str) -> str | None:
         if response.startswith('```json'):
             response = response[7:-3].strip()
+
         json_response = json.loads(response)
-        next_action = json_response.get("next_action", "continue()")
-        next_state = json_response.get("transition", "null")
-        if next_state and next_state != "null":
+        next_action = json_response.get("action", None)
+        next_state = json_response.get("transition", None)
+        if next_state:
             self.transit(next_state)
+
         return next_action
 
     def add_action(self, action: str):
@@ -210,13 +228,11 @@ class S2Plan:
         })
     
     def get_s1_input(self) -> str:
-        if self.content == DEFAULT_PLAN_CONTENT:
-            return "None"
         info = {
             "local_data": self.local_data,
             "global_conditions": self.global_conditions,
             "current_state": {
-                self.states[self.current_state],
+                self.current_state: self.states[self.current_state],
             }
         }
         return json.dumps(info, indent=4)

@@ -35,13 +35,6 @@ Objects: [
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
-Waypoints: [
-	{"id": 1, "label": "room"},
-	{"id": 2, "label": "room"},
-	{"id": 3, "label": "hallway"},
-	{"id": 8, "label": "hallway"},
-]
-
 ## OUTPUT
 goto_object("person")
 
@@ -49,7 +42,7 @@ goto_object("person")
 ------------
 # EXAMPLE 3
 ## INSTRUCTION
-Turn around.
+Turn right.
 
 ## ROBOT STATE
 State: {"time": "14:16:08", "posture": "standing", "current_waypoint_id": 2}
@@ -60,14 +53,8 @@ Objects: [
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
 ]
 
-Waypoints: [
-	{"id": 1, "label": "room"},
-	{"id": 2, "label": "room"},
-	{"id": 3, "label": "hallway"}
-]
-
 ## OUTPUT
-rotate(180)
+rotate(-90)
 
 
 ------------
@@ -82,12 +69,6 @@ State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 5}
 Objects: [
     {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"}
 ]
 
 ## OUTPUT
@@ -106,12 +87,6 @@ State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 3}
 Objects: [
     {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
     {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "label": "room"},
-	{"id": 2, "label": "room"},
-	{"id": 3, "label": "hallway"}
 ]
 
 ## OUTPUT

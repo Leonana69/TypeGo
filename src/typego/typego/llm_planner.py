@@ -35,32 +35,32 @@ class LLMPlanner():
         self.robot = robot
 
     def s0_plan(self, inst) -> str:
-        robot_skills = ""
-        robot_skills += f"#### Low-level skills\n"
-        robot_skills += str(self.robot.ll_skillset._sim())
-        if self.robot.hl_skillset is not None:
-            robot_skills += f"\n#### High-level skills\n"
-            robot_skills += str(self.robot.hl_skillset._sim())
+        # robot_skills = ""
+        # robot_skills += f"#### Low-level skills\n"
+        # robot_skills += str(self.robot.ll_skillset._sim())
+        # if self.robot.hl_skillset is not None:
+        #     robot_skills += f"\n#### High-level skills\n"
+        #     robot_skills += str(self.robot.hl_skillset._sim())
 
-        state = "State: " + self.robot.get_state() + "\n\n"
+        state = "State: " + self.robot.get_state()
 
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
 
         prompt = self.s0_prompt.format(example_plans=self.s0_examples,
                                             user_instruction=inst,
-                                            robot_skills=robot_skills,
+                                            # robot_skills=robot_skills,
                                             robot_state=state,
                                             scene_description=scene_description)
 
         ret = self.llm.request(prompt, ModelType.LOCAL_1B)
         with open(CHAT_LOG_DIR + "s0_log.txt", "a") as f:
-            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt = prompt#.split("# CURRENT TASK", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s1_plan(self, inst) -> str:
+    def s1_plan(self, inst: str | None) -> str:
         robot_skills = ""
         robot_skills += f"#### Low-level skills\n"
         robot_skills += str(self.robot.ll_skillset)
@@ -79,7 +79,7 @@ class LLMPlanner():
         prompt = self.s1_prompt.format(user_guidelines=self.s1_user_guidelines,
                                             robot_skills=robot_skills,
                                             example_plans=self.s1_examples,
-                                            instruction=inst,
+                                            instruction=inst if inst else "None",
                                             robot_state=state,
                                             scene_description=scene_description)
 

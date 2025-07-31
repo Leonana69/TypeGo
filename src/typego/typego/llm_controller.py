@@ -49,6 +49,7 @@ class LLMController():
 
         self.s0_event = threading.Event()
         self.s0_s1_event = threading.Event()
+        self.s0_s1_event.set()
         self.s1_event = threading.Event()
         self.s2_event = threading.Event()
 
@@ -159,9 +160,13 @@ class LLMController():
             self.s0_event.wait()
             print_t(f"[S0] Received S0 event, processing...")
             self.s0_event.clear()
+            self.s0_s1_event.clear()
             new_inst = self.get_instruction(0)
             plan = self.planner.s0_plan(new_inst)
             print_t(f"[S0] Get plan: {plan}")
+
+            # use S2Plan.default to handle a new task
+            S2Plan.set_default()
             self.robot.append_actions(plan)
             self.s0_s1_event.set()
 
@@ -190,8 +195,6 @@ class LLMController():
             new_inst = self.get_instruction(1)
             if new_inst is None:
                 self.s0_s1_event.wait(timeout=100)
-                time.sleep(0.01)
-                self.s0_s1_event.clear()
 
             plan = self.planner.s1_plan(new_inst)
 
@@ -204,9 +207,11 @@ class LLMController():
             print_t(f"[S1] Plan: {plan}")
             action = S2Plan.CURRENT.process_s1_response(plan)
             print_t(f"[S1] Action: {action}")
+            if action:
+                self.robot.append_actions(action)
             
             sleep_time = max(0, delay - (time.time() - start_time))
-            self.s1_event.wait(timeout=100)
+            self.s1_event.wait(timeout=sleep_time)
             self.s1_event.clear()
 
     def s2_loop(self, rate: float = 0.2):

@@ -63,35 +63,31 @@ class TypeFly:
                 type='messages',
             ).queue()
 
-        # Start a separate thread for streaming assistant messages
-        Thread(target=self.stream_from_queue, daemon=True).start()
-
     def ui_process_message(self, message: str, history: list):
-        # print_t(f"[S] Receiving task description: {message}, history: {history}")
+        """Handle new user input and also stream queued messages."""
         self.history = history
         if message == "exit":
             self.running = False
-            return gr.ChatMessage(role="assistant", content="Shutting down...")
+            yield gr.ChatMessage(role="assistant", content="Shutting down...")
+            return
         elif len(message) == 0:
-            return gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
+            yield gr.ChatMessage(role="assistant", content="[WARNING] Empty command!]")
+            return
         else:
+            # Send instruction to LLM
             self.llm_controller.put_instruction(message)
-            return gr.ChatMessage(role="assistant", content="Okay! Working on it...")
+            yield gr.ChatMessage(role="assistant", content="Okay! Working on it...")
 
-    def stream_from_queue(self):
-        while self.running:
-            try:
-                msg = self.message_queue.get(timeout=1.0)
-            except queue.Empty:
-                continue
+            # Now stream messages from the queue as they arrive
+            while True:
+                try:
+                    msg = self.message_queue.get(timeout=0.5)
+                except queue.Empty:
+                    break  # stop when no new messages for a while
 
-            if isinstance(msg, tuple):  # (image,) or similar
-                history = gr.ChatMessage(role="assistant", content=msg)
-            elif isinstance(msg, str):
-                history = gr.ChatMessage(role="assistant", content=msg)
-
-            print_t(f"[S] Received message: {msg}")
-
+                # Yield new assistant messages one by one
+                print_t(f"[UI] New message: {msg}")
+                yield gr.ChatMessage(role="assistant", content=str(msg))
 
     def generate_mjpeg_stream(self, source: str):
         while self.running:

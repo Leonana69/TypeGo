@@ -54,7 +54,7 @@ Waypoints: [
 
 ## OUTPUT
 {
-	"next_action": "continue()",
+	"action": "continue()",
 	"transition": null
 }
 
@@ -116,7 +116,7 @@ Waypoints: [
 
 ## OUTPUT
 {
-	"next_action": "goto_waypoint(11)",
+	"action": "goto_waypoint(11)",
 	"transition": null
 }
 
@@ -179,7 +179,7 @@ Waypoints: [
 
 ## OUTPUT
 {
-	"next_action": "stop()",
+	"action": "stop()",
 	"transition": "PROCESS_PERSON"
 }
 
@@ -235,6 +235,6 @@ Waypoints: [
 
 ## OUTPUT
 {
-	"next_action": "take_picture()",
+	"action": "take_picture()",
 	"transition": "RETURN_HOME"
 }

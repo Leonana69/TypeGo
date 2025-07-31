@@ -447,6 +447,10 @@ class Go2Wrapper(RobotWrapper):
         self.function_thread.start()
         self.command_thread.start()
         self.observation.start()
+
+        time.sleep(1.0)  # Give some time for the robot to initialize
+        self.nod()
+
         return True
 
     @overrides
@@ -475,7 +479,7 @@ class Go2Wrapper(RobotWrapper):
             self.active_program.stop()
 
     def _go2_command(self, command: str, **args):
-        print_t(f"[Go2] Sending command: {command}, args: {args}")
+        # print_t(f"[Go2] Sending command: {command}, args: {args}")
         control = {
             "command": command,
             **args
@@ -624,13 +628,13 @@ class Go2Wrapper(RobotWrapper):
 
             remaining_angle = delta_rad - accumulated_angle
 
-            print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
+            # print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
             if abs(remaining_angle) < 0.01 or delta_rad * remaining_angle < 0:
                 # If the remaining angle is small enough or we have overshot the target
                 break
 
             vyaw = self.pid_yaw.update(remaining_angle)
-            print_t(f"-> vyaw: {vyaw:.2f} rad/s")
+            # print_t(f"-> vyaw: {vyaw:.2f} rad/s")
             self._go2_command("nav", vx=0.0, vy=0.0, vyaw=round(float(vyaw), 3))
 
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
@@ -645,8 +649,8 @@ class Go2Wrapper(RobotWrapper):
         print("-> Nod")
         actions = []
         for _ in range(2):  # 2 up/down cycles = 4 total motions
-            actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.3, yaw=0), 1.0))
-            actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 1.0))
+            actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.3, yaw=0), 0.3))
+            actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 0.3))
         go2_action = Go2Action(actions)
         go2_action.execute()
         self._go2_command("stop")
