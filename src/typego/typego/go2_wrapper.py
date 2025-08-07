@@ -16,6 +16,7 @@ from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import Image as ROSImage
 from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
+from std_msgs.msg import String
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
@@ -96,21 +97,33 @@ class Go2Observation(RobotObservation):
 
         # Subscribe to /voice_command
         node.create_subscription(
-            str,
+            String,
             '/voice_command',
             self._voice_command_callback,
             10
         )
 
         self.closest_object: tuple[float, float] = (float('inf'), 0.0)  # (distance, angle)
+        self.latest_command: str | None = None
 
-    def _voice_command_callback(self, msg: str):
+    def _voice_command_callback(self, msg: String):
         """
         Handle voice commands received from the /voice_command topic.
         This is a placeholder for future implementation.
         """
-        print_t(f"[Go2] Received voice command: {msg}")
+        print_t(f"[Go2] Received voice command: {msg.data}")
         # You can implement command parsing and execution here
+        self.latest_command = msg.data.strip().lower()
+
+    @overrides
+    def fetch_command(self) -> str | None:
+        """
+        Fetch the latest command received from the /voice_command topic.
+        Returns the command string or None if no command is available.
+        """
+        command = self.latest_command
+        self.latest_command = None
+        return command
 
     def _image_callback(self, msg: ROSImage):
         # Convert ROS Image message to OpenCV image
@@ -646,8 +659,9 @@ class Go2Wrapper(RobotWrapper):
 
         if obj_info is not None:
             visual = f"Target is in view at distance {obj_info.depth:.2f} and angle {self.x_to_angle(obj_info.x):.2f} degrees."
+            self.last_target_x = obj_info.x
         else:
-            visual = "Target is not in view, try turn left or right to find it."
+            visual = "Target is not in view, try turn left or right according to the last seen angle to find it. Target was last seen at angle {:.2f} degrees.".format(self.x_to_angle(self.last_target_x) if hasattr(self, 'last_target_x') else 0.0)
             # gen_goal_prom = (
             # f"Write a goal for a robot to {user_goal} with basic behavioral guidance. "
             # "Include some tips to achive the goal, and how to avoid repetitive actions like continuous turning. "
@@ -658,7 +672,7 @@ class Go2Wrapper(RobotWrapper):
         return f"""You are a robot dog in a 2D plane. Your goal is to chase a target object, get close and facing the target. When the target is far away, you need to move faster. When the target is close, you should slow down and face it. You can rotate to adjust your direction.
 The target infomation: {visual}
 Choose your next move: 
-- nav(vx, vy, vyaw) to move in the direction of vx, vy, vyaw. Max vx speed is 2.0 m/s, vy is 0.2m/s and vyaw is 0.5 rad/s (if target angle is +, you should output negative vyaw to compensate).
+- nav(vx, vy, vyaw) to move in the direction of vx, vy, vyaw. Max vx speed is 2.0 m/s, vy is 0.2m/s and vyaw is 0.9 rad/s (if target angle is +, you should output negative vyaw to compensate).
 Only output one command without any punctuation mark. Do not explain."""
     
     def _go2_command_stream(self, event, command_queue):

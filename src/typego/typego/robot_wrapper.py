@@ -280,6 +280,9 @@ class RobotObservation(ABC):
 
     def blocked(self) -> bool:
         return False
+    
+    def fetch_command(self) -> str | None:
+        return None
 
 class RobotWrapper(ABC):
     def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: list[callable]):

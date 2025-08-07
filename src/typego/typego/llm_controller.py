@@ -73,6 +73,20 @@ class LLMController():
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s0_loop_thread.start()
 
+        self.vc_thread = threading.Thread(target=self.check_voice_command_thread)
+        self.vc_thread.start()
+
+    def check_voice_command_thread(self):
+        while not self.running:
+            time.sleep(0.1)
+        time.sleep(1.0)
+        while self.running:
+            command = self.robot.observation.fetch_command()  # Non-blocking fetch
+            if command:
+                print_t(f"[C] Received voice command: {command}")
+                self.put_instruction(command)
+            time.sleep(0.1)
+
     def user_log(self, content: str | Image.Image) -> bool:
         if isinstance(content, Image.Image):
             buffer = io.BytesIO()
