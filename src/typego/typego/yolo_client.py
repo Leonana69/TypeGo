@@ -53,8 +53,7 @@ class YoloClient():
         self._latest_result_lock = threading.Lock()
         self._latest_result = None
         self.frame_id = 0
-        self.frame_queue = asyncio.Queue() # queue element: (frame_id, frame)
-        self.frame_queue_lock = asyncio.Lock()
+        self.frame_id_lock = asyncio.Lock()
         print_t(f"[Y] YoloClient initialized with service url: {self.service_url}")
 
     @property
@@ -139,10 +138,9 @@ class YoloClient():
         }
         image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
         
-        async with self.frame_queue_lock:
+        async with self.frame_id_lock:
             self.frame_id += 1
-            config['image_id'] = self.frame_id  # Update with actual frame_id
-            await self.frame_queue.put((self.frame_id, image))
+            config['image_id'] = self.frame_id
             
             form_data = aiohttp.FormData()
             form_data.add_field('image', image_bytes, filename='frame.webp', content_type='image/webp')
@@ -163,19 +161,5 @@ class YoloClient():
             print_t(f"[Y] Missing image_id in results: {json_results}")
             return
             
-        # Safe queue processing
-        result_image_id = json_results['image_id']
-        async with self.frame_queue_lock:
-            # Process queue until we find our frame or a newer one
-            while not self.frame_queue.empty():
-                head_frame = await self.frame_queue.get()
-                if head_frame[0] == result_image_id:
-                    # Update latest result without holding the queue lock
-                    with self._latest_result_lock:
-                        self._latest_result = (image, self.cc_to_ps(json_results["result"]))
-                    break
-                elif head_frame[0] > result_image_id:
-                    print_t(f"[Y] Discarded old result: {head_frame[0]}")
-                    return
-                else:
-                    print_t(f"[Y] Discarded old frame: {head_frame[0]}")
+        with self._latest_result_lock:
+            self._latest_result = (image, self.cc_to_ps(json_results["result"]))
