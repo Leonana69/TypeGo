@@ -64,8 +64,8 @@ class LLMController():
         
         self.planner.set_robot(self.robot)
 
-        self.s1_loop_thread = threading.Thread(target=self.s1_loop)
-        self.s1_loop_thread.start()
+        # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
+        # self.s1_loop_thread.start()
 
         # self.s2_loop_thread = threading.Thread(target=self.s2_loop)
         # self.s2_loop_thread.start()
@@ -163,6 +163,8 @@ class LLMController():
             self.s0_s1_event.clear()
             new_inst = self.get_instruction(0)
             plan = self.planner.s0_plan(new_inst)
+
+            plan = "chase()"
             print_t(f"[S0] Get plan: {plan}")
 
             # use S2Plan.default to handle a new task
@@ -231,6 +233,7 @@ class LLMController():
 
             # process plan ...
             S2Plan.parse(new_inst, plan)
+            print(S2Plan.CURRENT)
             
 
     def get_instruction(self, system_id: int) -> Optional[str]:

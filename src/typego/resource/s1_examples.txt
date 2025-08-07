@@ -14,18 +14,18 @@ Plan for Current State:
 		"next_waypoint": 8
 	},
 
-	"global_conditions": [
+	"global_trans": [
 		"PROCESS_PERSON: see any person"
 	],
 
 	"current_state": {
 		"GOTO_NEXT": {
 			"action": "go to next_waypoint",
-			"local_data_update": {
+			"update": {
 		        "current_index": "current_index + 1",
 		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
 		    },
-			"transitions": [
+			"trans": [
 				"RETURN_HOME: next_waypoint is null"
 			]
 		},
@@ -76,18 +76,18 @@ Plan for Current State:
 		"next_waypoint": 11
 	},
 
-	"global_conditions": [
+	"global_trans": [
 		"PROCESS_PERSON: see any person"
 	],
 
 	"current_state": {
 		"GOTO_NEXT": {
 			"action": "go to next_waypoint",
-			"local_data_update": {
+			"update": {
 		        "current_index": "current_index + 1",
 		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
 		    },
-			"transitions": [
+			"trans": [
 				"RETURN_HOME: next_waypoint is null"
 			]
 		},
@@ -138,18 +138,18 @@ Plan for Current State:
 		"next_waypoint": 11
 	},
 
-	"global_conditions": [
+	"global_trans": [
 		"PROCESS_PERSON: see any person"
 	],
 
 	"current_state": {
 		"GOTO_NEXT": {
 			"action": "go to next_waypoint",
-			"local_data_update": {
+			"update": {
 		        "current_index": "current_index + 1",
 		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
 		    },
-			"transitions": [
+			"trans": [
 				"RETURN_HOME: next_waypoint is null"
 			]
 		},
@@ -200,14 +200,14 @@ Plan for Current State:
 		"next_waypoint": 11
 	},
 
-	"global_conditions": [
+	"global_trans": [
 		"PROCESS_PERSON: see any person"
 	],
 
 	"current_state": {
 		"PROCESS_PERSON": {
 			"action": "take a picture",
-			"transitions": ["RETURN_HOME: always"]
+			"trans": ["RETURN_HOME: always"]
 		},
 	}
 }

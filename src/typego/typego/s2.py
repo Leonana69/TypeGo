@@ -48,7 +48,7 @@ class S2Plan:
         S2Plan.ID_COUNTER += 1
 
         self.local_data = plan_json.get("local_data", {})
-        self.global_conditions = plan_json.get("global_conditions", [])
+        self.global_trans = plan_json.get("global_trans", [])
         self.states = plan_json["states"]
         self.current_state = "INIT"
 
@@ -60,7 +60,7 @@ class S2Plan:
         S2Plan.HISTORY[self.id] = self
         S2Plan.CURRENT = self
 
-        after_init_states = self.states[self.current_state].get("transitions", [])
+        after_init_states = self.states[self.current_state].get("trans", [])
         for transition in after_init_states:
             if transition.endswith(": always"):
                 self.transit(transition[:-8])
@@ -75,22 +75,22 @@ class S2Plan:
         cls.ID_COUNTER += 1
 
         default_plan.local_data = {}
-        default_plan.global_conditions = [
+        default_plan.global_trans = [
             "GREET_PERSON: see any person",
             "LOOK_AROUND: see any interesting object"
         ]
         default_plan.states = {
             "IDLE": {
                 "action": None,
-                "transitions": []
+                "trans": []
             },
             "GREET_PERSON": {
                 "action": "look at the person and nod",
-                "transitions": ["IDLE: always"]
+                "trans": ["IDLE: always"]
             },
             "LOOK_AROUND": {
                 "action": "look around for interesting things",
-                "transitions": ["IDLE: always"]
+                "trans": ["IDLE: always"]
             }
         }
         default_plan.current_state = "IDLE"
@@ -107,6 +107,9 @@ class S2Plan:
     @classmethod
     def set_default(cls):
         cls.CURRENT = cls.HISTORY.get(0)
+        cls.CURRENT.status = STATUS_IN_PROGRESS
+        cls.CURRENT.start_time = time.time()
+        cls.CURRENT.end_time = None
         cls.CURRENT.action_list = []  # reset action list for default plan
 
     @classmethod
@@ -185,7 +188,7 @@ class S2Plan:
 
         json_response = json.loads(response)
         next_action = json_response.get("action", None)
-        next_state = json_response.get("transition", None)
+        next_state = json_response.get("trans", None)
         if next_state:
             self.transit(next_state)
 
@@ -210,12 +213,12 @@ class S2Plan:
                 break
 
     def update_local_data(self):
-        updates = self.states[self.current_state].get("local_data_update", {})
+        updates = self.states[self.current_state].get("update", {})
         for key, expr in updates.items():
             try:
                 self.local_data[key] = eval(expr, {}, self.local_data.copy())
             except Exception as e:
-                print(f"Failed to evaluate local_data_update for key '{key}': {expr}")
+                print(f"Failed to evaluate update for key '{key}': {expr}")
                 raise e
             
     def __repr__(self) -> str:
@@ -230,7 +233,7 @@ class S2Plan:
     def get_s1_input(self) -> str:
         info = {
             "local_data": self.local_data,
-            "global_conditions": self.global_conditions,
+            "global_trans": self.global_trans,
             "current_state": {
                 self.current_state: self.states[self.current_state],
             }
@@ -246,34 +249,30 @@ test_response = """
         "target_waypoints": [1, 2, 3],
         "next_waypoint": 1
     },
-	"global_conditions": [],
+	"global_trans": [],
 
 	"states": {
 		"INIT": {
-			"action": null,
-			"transitions": ["ENGAGE_PERSON: always"]
+			"trans": ["ENGAGE_PERSON: always"]
 		},
 
 		"ENGAGE_PERSON": {
 			"action": "walk to person, say hello",
-			"transitions": ["PLAY: always"]
+			"trans": ["PLAY: always"]
 		},
 
 		"PLAY": {
 			"action": "do a fun dance or follow the person",
-            "local_data_update": {
+            "update": {
 		        "current_index": "current_index + 1",
 		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
 		    },
-			"transitions": [
+			"trans": [
 				"DONE: current_index >= 3"
 			]
 		},
 
-		"DONE": {
-			"action": null,
-			"transitions": []
-		}
+		"DONE": {}
 	}
 }
 ```
@@ -297,4 +296,4 @@ def test_s2_plan():
     S2Plan.init_default()
     print(S2Plan.get_history_sorted_by_time())
 
-test_s2_plan()
+# test_s2_plan()

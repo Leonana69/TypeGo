@@ -19,9 +19,9 @@ from typego.llm_controller import LLMController
 CURRENT_DIR = get_package_share_directory('typego')
 
 def generate_povs():
-    """Generate HTML string for multiple drone POVs."""
-    
-    html_content = "<h2>Robot POVs</h2><div style='display: flex; gap: 10px;'>"
+    """Generate HTML string for the robot POV."""
+
+    html_content = "<h2>Robot POV</h2><div style='display: flex; gap: 10px;'>"
     html_content += f"""
     <div style="flex: 0 0 70%;">
         <img src="http://localhost:50000/robot-pov/" alt="robot-pov" 
@@ -35,13 +35,13 @@ def generate_povs():
     html_content += "</div>"
     return html_content
 
-class TypeFly:
+class TypeGo:
     def __init__(self, robot_info: RobotInfo):
         self.message_queue = queue.Queue()
         self.llm_controller = LLMController(robot_info, self.message_queue)
         self.running = True
 
-        self.ui = gr.Blocks(title="TypeFly")
+        self.ui = gr.Blocks(title="TypeGo")
         self.setup_ui()
 
     def setup_ui(self):
@@ -54,7 +54,7 @@ class TypeFly:
             "Go to the chair without book.",
         ]
         with self.ui:
-            gr.HTML("""<h1>🪽 TypeFly: Power the Drone with Large Language Model</h1>""")
+            gr.HTML("""<h1>🪽 TypeGo: Power the Robot Dog with Large Language Model</h1>""")
             gr.HTML(generate_povs())
             self.chat_interface = gr.ChatInterface(
                 fn=self.ui_process_message,
@@ -139,10 +139,7 @@ class TypeFly:
         # Stop the LLM controller
         self.llm_controller.stop_controller()
 
-"""
-Available robot types: ['tello', 'virtual', 'go2']
-"""
 def main():
     with open(os.path.join(CURRENT_DIR, 'config/robot_info.json'), 'r') as f:
-        typefly = TypeFly(RobotInfo.from_dict(json.load(f)))
-        typefly.run()
+        typego = TypeGo(RobotInfo.from_dict(json.load(f)))
+        typego.run()

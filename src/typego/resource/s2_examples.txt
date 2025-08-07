@@ -34,58 +34,47 @@ A new instruction is received, so the in-progress task (2) will be stopped since
 The robot is currently at waypoint 1, labeled "room", and needs to search for any person in the hallway. There are no people in the immediate scene description, so the robot should navigate through the waypoints labeled "hallway" to look for a person. If a person is detected, the robot must stop, take a picture, and report the message. After that, or if no person is found at all, the robot should return to its original waypoint (1).
 
 To implement this behavior, we define:
-- `target_waypoints`: a list of hallway waypoints to visit.
-- `start_waypoint`: the robot’s current location (1).
+- `targets`: a list of hallway waypoints to visit.
+- `start`: the robot’s current location (1).
 - A state machine:
-  - `INIT` to transition into `GOTO_NEXT`.
-  - `GOTO_NEXT` to visit waypoints in sequence and update `next_waypoint`.
-  - `PROCESS_PERSON` as a global condition when a person is seen.
+  - `GOTO_NEXT` to visit waypoints in sequence and update `next`.
+  - `SEE_PERSON` as a global condition when a person is seen.
   - `RETURN_HOME` and `DONE` to wrap up the task.
 
 ```json
 {
-	"instruction_actions": "stop(2);new()",
-	"local_data": {
-		"target_waypoints": [2, 3, 4, 7, 8, 12],
-		"start_waypoint": 1,
-		"current_index": 0,
-		"next_waypoint": 2
+	"task": "stop(2);new()",
+	"variables": {
+		"targets": [2, 3, 4, 7, 8, 12],
+		"start": 1,
+		"index": 0,
+		"next": 2
 	},
 
-	"global_conditions": [
-		"PROCESS_PERSON: see any person"
+	"global_trans": [
+		"SEE_PERSON: see any person"
 	],
 
 	"states": {
-		"INIT": {
-			"action": null,
-			"transitions": ["GOTO_NEXT: always"]
-		},
-
 		"GOTO_NEXT": {
-			"action": "go to next_waypoint",
-			"local_data_update": {
-		        "current_index": "current_index + 1",
-		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+			"action": "go to next",
+			"update": {
+		        "index": "index + 1",
+		        "next": "targets[index] if index < len(targets) else None"
 		    },
-			"transitions": [
-				"RETURN_HOME: next_waypoint is null"
+			"trans": [
+				"RETURN_HOME: next is null"
 			]
 		},
 
-		"PROCESS_PERSON": {
+		"SEE_PERSON": {
 			"action": "take a picture, then report the message",
-			"transitions": ["RETURN_HOME: always"]
+			"trans": ["RETURN_HOME: always"]
 		},
 
 		"RETURN_HOME": {
-			"action": "go back to start_location",
-			"transitions": ["DONE: always"]
-		},
-
-		"DONE": {
-			"action": null,
-			"transitions": []
+			"action": "go back to start",
+			"trans": ["DONE: always"]
 		}
 	}
 }
@@ -133,31 +122,21 @@ We assume the agent system can monitor elapsed time since task start to trigger 
 
 ```json
 {
-	"instruction_actions": "new()",
-	"local_data": {},
-	"global_conditions": [],
+	"task": "new()",
+	"variables": {},
+	"global_trans": [],
 
 	"states": {
-		"INIT": {
-			"action": null,
-			"transitions": ["ENGAGE_PERSON: always"]
-		},
-
 		"ENGAGE_PERSON": {
 			"action": "walk to person, say hello",
-			"transitions": ["PLAY: always"]
+			"trans": ["PLAY: always"]
 		},
 
 		"PLAY": {
 			"action": "do a fun dance or follow the person",
-			"transitions": [
+			"trans": [
 				"DONE: 3mins past since the task started"
 			]
-		},
-
-		"DONE": {
-			"action": null,
-			"transitions": []
 		}
 	}
 }
@@ -196,6 +175,6 @@ No new instruction is received, but there is a paused task (3) recently. The rob
 
 ```json
 {
-	"instruction_actions": "continue(3)"
+	"task": "continue(3)"
 }
 ```

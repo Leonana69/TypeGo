@@ -29,7 +29,7 @@ You are a planner for a robot dog. At each time step, generate only the **next o
 # OUTPUT FORMAT
 Return a JSON object with:
 - `action`: The next MiniSpec command to execute, such as `"goto_waypoint(2)"`, `"take_picture()"`, `"continue()"`, or `"stop()"`. If no action is needed, return null.
-- `transition`: The next state according to the plan (e.g., `"GOTO_NEXT"`), or `null` if no state change is needed.
+- `trans`: The next state according to the plan (e.g., `"GOTO_NEXT"`), or `null` if no state change is needed.
 
 # REMINDERS
 - Do not repeat actions already in progress. Use `continue()` instead.

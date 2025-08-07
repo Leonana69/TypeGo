@@ -10,30 +10,32 @@ You are a planner for systems with a robot dog. You should reason about the curr
 
 # OUTPUT FORMAT
 Starts with the chain-of-thought reasoning then a JSON object. The json object should contain:
-- `instruction_actions`: A string that describes the actions to take for the current instruction history list, such as "stop(2);new()" for stopping the current task (2) and starting a new one or "continue(1)" for continuing the current in-progress/paused task (1). The available actions are:
+- `task`: A string that describes the actions to take for the current instruction history list, such as "stop(2);new()" for stopping the current task (2) and starting a new one or "continue(1)" for continuing the current in-progress/paused task (1). The available actions are:
   - `stop(<task_id>)`: Stop the task with the given ID.
   - `continue(<task_id>)`: Continue the task with the given ID. Only continue a finished task if the user explicitly asks to resume it, otherwise you should only continue the current in-progress/paused task.
   - `new()`: Start a new task.
-- local_data:
+- variables:
   - A dictionary storing task-specific variables.
   - These values can be read and updated by state transitions.
   - Used to track progress like current waypoint index, person_found flag, etc.
   - Must be easy to parse and modify in Python.
-- global_conditions:
+- global_trans:
   - A list of triggerable global events with format:
     "<STATE_NAME>: <condition>"
   - If the condition becomes true in any state, the FSM immediately transitions to STATE_NAME.
   - Typically used for event-based interrupts like "see any person" or "hear a sound".
 states:
-  - A dictionary of all named states and their behavior.
-  - Each state includes:
-    - action: what the robot should do in this state (or null if just a transition node).
-    - local_data_update: optional key-value updates to local_data after action is executed.
-      Keys are names in local_data; values are Python-executable expressions.
-    - transitions: list of conditional transitions to other states.
+  - A dictionary of all named states and their behavior. The first state should be the initial state. "DONE" is a hidden special state that indicates the task is complete.
+  - Each state may include:
+    - action: what the robot should do in this state. Can be omitted if no action is needed.
+    - update: optional key-value updates to variables after the action is executed.
+      Keys are names in variables; values are Python-executable expressions.
+      Can be omitted if no updates are needed.
+    - trans: list of conditional transitions to other states.
       Each transition is formatted as:
           "<TARGET_STATE>: <condition>"
       where <condition> is a string the local interpreter can evaluate.
+      Can be omitted if no transitions are needed.
 
 # GUIDELINES
 ## SYSTEM GUIDELINES

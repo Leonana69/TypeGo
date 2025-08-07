@@ -347,7 +347,7 @@ class RobotWrapper(ABC):
         object_list = self.get_obj_list()
         return f"[{', '.join(str(obj) for obj in object_list)}]"
 
-    def get_obj_info(self, object_name: str) -> ObjectInfo:
+    def get_obj_info(self, object_name: str) -> ObjectInfo | None:
         object_name = object_name.strip('\'').strip('"').lower()
 
         for _ in range(3):
