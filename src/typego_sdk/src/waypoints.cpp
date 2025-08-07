@@ -288,6 +288,9 @@ private:
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
 
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2L);  // 2 seconds to connect
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);         // 5 seconds total for the operation
+
             // Perform the request
             CURLcode res = curl_easy_perform(curl);
             if (res != CURLE_OK) {

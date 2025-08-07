@@ -22,7 +22,6 @@ public:
         printf("[LivoxReceiver] Initializing...\n");
         publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("livox_points", 10);
         laserscan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
-        tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
         socket_ = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -135,37 +134,18 @@ private:
         while (keep_running_ && rclcpp::ok()) {
             ssize_t rlen = recvfrom(socket_, buffer.data(), buffer.size(), 0, nullptr, nullptr);
             if (rlen <= 0) continue;
-            unsigned long recv_len = static_cast<unsigned long>(rlen);
 
-            uint8_t msg_type = buffer[0];
-            if (msg_type == MSG_POINTCLOUD) {
-                constexpr float scale = 1.0f / 1000.0f;
-                const int16_t* data = reinterpret_cast<const int16_t*>(buffer.data() + 3);
-                size_t num_pts = (recv_len - 3) / sizeof(int16_t);
-                if (num_pts % 3 != 0) continue;
+            constexpr float scale = 1.0f / 1000.0f;
 
-                std::lock_guard<std::mutex> lock(buffer_mutex_);
-                for (size_t i = 0; i < num_pts; ++i)
-                    point_buffer_.emplace_back(data[i] * scale);
-            }
-            else if (msg_type == MSG_HIGHSTATE && recv_len >= 1 + sizeof(float) * 7) {
-                const float* data = reinterpret_cast<float*>(buffer.data() + 1);
+            // Skip the first 2 bytes (seq_id), interpret the rest as int16_t triplets
+            if (rlen <= 2) continue;
+            const int16_t* data = reinterpret_cast<const int16_t*>(buffer.data() + 2);
+            size_t num_pts = (rlen - 2) / sizeof(int16_t);
+            if (num_pts % 3 != 0) continue;
 
-                geometry_msgs::msg::TransformStamped tf_msg;
-                tf_msg.header.stamp = now();
-                tf_msg.header.frame_id = "odom";
-                tf_msg.child_frame_id = "base_link";
-
-                tf_msg.transform.translation.x = data[0];
-                tf_msg.transform.translation.y = data[1];
-                tf_msg.transform.translation.z = data[2];
-                tf_msg.transform.rotation.x = data[4];
-                tf_msg.transform.rotation.y = data[5];
-                tf_msg.transform.rotation.z = data[6];
-                tf_msg.transform.rotation.w = data[3];
-
-                tf_broadcaster_->sendTransform(tf_msg);
-            }
+            std::lock_guard<std::mutex> lock(buffer_mutex_);
+            for (size_t i = 0; i < num_pts; ++i)
+                point_buffer_.emplace_back(data[i] * scale);
         }
     }
 
@@ -177,7 +157,6 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laserscan_publisher_;
-    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };
 
 int main(int argc, char** argv) {

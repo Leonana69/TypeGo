@@ -38,6 +38,15 @@ target_link_libraries(livox_udp_receiver_node PUBLIC
   tf2_ros::tf2_ros
 )
 
+add_executable(go2_tf_service_node src/go2_tf_service.cpp)
+target_link_libraries(go2_tf_service_node PUBLIC
+  ${sensor_msgs_TARGETS}
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs_library
+  tf2_ros::static_transform_broadcaster_node
+  tf2_ros::tf2_ros
+)
+
 pkg_check_modules(GST REQUIRED gstreamer-1.0 gstreamer-app-1.0)
 
 add_executable(gstreamer_receiver_node src/gstreamer_receiver.cpp)
@@ -68,6 +77,7 @@ install(TARGETS
   livox_udp_receiver_node
   gstreamer_receiver_node
   waypoints_node
+  go2_tf_service_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch
