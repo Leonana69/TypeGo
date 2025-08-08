@@ -13,6 +13,9 @@
 #include <cmath>
 #include <arpa/inet.h>
 
+#include "tf2_ros/static_transform_broadcaster.h"
+// #include "tf2/LinearMath/Quaternion.h"
+
 #define MSG_POINTCLOUD 0x01
 #define MSG_HIGHSTATE  0x02
 
@@ -23,11 +26,17 @@ public:
         publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("livox_points", 10);
         laserscan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
 
+        init_lidar_link();
+
+        const char* go2_ip = std::getenv("GO2_IP");
+        std::string go2_ip_ = go2_ip ? std::string(go2_ip) : "192.168.0.253";
+        const uint16_t go2_livox_port = 8888;
+
         socket_ = socket(AF_INET, SOCK_DGRAM, 0);
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(8888);
+        addr.sin_port = htons(go2_livox_port);
         addr.sin_addr.s_addr = INADDR_ANY;
         bind(socket_, (sockaddr*)&addr, sizeof(addr));
         struct timeval tv;
@@ -38,18 +47,13 @@ public:
         // Send a dummy packet to notify server of this client's address
         sockaddr_in server_addr{};
         server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(8888);  // server port must match
-
-        const char* go2_ip = std::getenv("GO2_IP");
-        std::string go2_ip_ = go2_ip ? std::string(go2_ip) : "192.168.0.253";
-
+        server_addr.sin_port = htons(go2_livox_port);
         inet_pton(AF_INET, go2_ip_.c_str(), &server_addr.sin_addr);  // use server's actual IP
 
         uint8_t init_packet[1] = {0};
         sendto(socket_, init_packet, sizeof(init_packet), 0, (sockaddr*)&server_addr, sizeof(server_addr));
 
         thread_ = std::thread([this]() { this->receive_loop(); });
-
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(100),
             std::bind(&LivoxReceiver::publish_aggregated_cloud, this)
@@ -63,6 +67,34 @@ public:
     }
 
 private:
+    void init_lidar_link() {
+        // Parameters (or hardcode):
+        const std::string base_frame = "base_link";
+        const std::string lidar_frame = "lidar_link";
+
+        // Example displacement of the lidar relative to base_link:
+        double dx = 0.20;   // 20 cm forward
+        double dy = 0.00;   // centered left/right
+        double dz = 0.00;   // centered up/down
+
+        static_tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
+
+        geometry_msgs::msg::TransformStamped t;
+        t.header.stamp = now();
+        t.header.frame_id = base_frame;
+        t.child_frame_id = lidar_frame;
+        t.transform.translation.x = dx;
+        t.transform.translation.y = dy;
+        t.transform.translation.z = dz;
+
+        t.transform.rotation.x = 0;
+        t.transform.rotation.y = 0;
+        t.transform.rotation.z = 0;
+        t.transform.rotation.w = 1;
+
+        static_tf_broadcaster_->sendTransform(t);
+    }
+
     void publish_aggregated_cloud() {
         std::vector<float> local_buffer;
         {
@@ -76,7 +108,7 @@ private:
 
         sensor_msgs::msg::PointCloud2 cloud_msg;
         cloud_msg.header.stamp = timestamp;
-        cloud_msg.header.frame_id = "base_link";
+        cloud_msg.header.frame_id = "lidar_link";
         cloud_msg.height = 1;
         cloud_msg.width = num_points;
         cloud_msg.is_dense = true;
@@ -97,7 +129,7 @@ private:
 
         sensor_msgs::msg::LaserScan scan_msg;
         scan_msg.header.stamp = timestamp;
-        scan_msg.header.frame_id = "base_link";
+        scan_msg.header.frame_id = "lidar_link";
 
         float angle_min = -M_PI;
         float angle_max = M_PI;
@@ -157,6 +189,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laserscan_publisher_;
+    std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
 };
 
 int main(int argc, char** argv) {

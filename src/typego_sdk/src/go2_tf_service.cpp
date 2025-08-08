@@ -19,12 +19,16 @@ public:
     Go2TFService() : Node("go2_tf_service") {
         printf("[Go2 TF service] Initializing...\n");
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+        
+        const char* go2_ip = std::getenv("GO2_IP");
+        std::string go2_ip_ = go2_ip ? std::string(go2_ip) : "192.168.0.253";
+        const uint16_t go2_livox_port = 8889;
 
         socket_ = socket(AF_INET, SOCK_DGRAM, 0);
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(8889);
+        addr.sin_port = htons(go2_livox_port);
         addr.sin_addr.s_addr = INADDR_ANY;
         bind(socket_, (sockaddr*)&addr, sizeof(addr));
         struct timeval tv;
@@ -35,16 +39,11 @@ public:
         // Send a dummy packet to notify server of this client's address
         sockaddr_in server_addr{};
         server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(8889);  // server port must match
-
-        const char* go2_ip = std::getenv("GO2_IP");
-        std::string go2_ip_ = go2_ip ? std::string(go2_ip) : "192.168.0.253";
-
+        server_addr.sin_port = htons(go2_livox_port);
         inet_pton(AF_INET, go2_ip_.c_str(), &server_addr.sin_addr);  // use server's actual IP
 
         uint8_t init_packet[1] = {0};
         sendto(socket_, init_packet, sizeof(init_packet), 0, (sockaddr*)&server_addr, sizeof(server_addr));
-
         thread_ = std::thread([this]() { this->receive_loop(); });
     }
 
