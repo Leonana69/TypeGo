@@ -178,7 +178,6 @@ class LLMController():
             new_inst = self.get_instruction(0)
             plan = self.planner.s0_plan(new_inst)
 
-            plan = "chase()"
             print_t(f"[S0] Get plan: {plan}")
 
             # use S2Plan.default to handle a new task

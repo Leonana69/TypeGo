@@ -21,6 +21,7 @@ from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture
 from typego.robot_info import RobotInfo
@@ -65,11 +66,17 @@ class Go2Observation(RobotObservation):
         )
 
         # Subscribe to /tf
+        tf_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=100,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         node.create_subscription(
             TFMessage,
             '/tf',
             self._tf_callback,
-            10
+            tf_qos
         )
 
         # Subscribe to /map
@@ -378,7 +385,6 @@ class Go2Wrapper(RobotWrapper):
         self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
         self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
         self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
-        self.ll_skillset.add_low_level_skill("chase", self.chase, "Chase the target")
 
         high_level_skills = [
             {
@@ -627,97 +633,97 @@ class Go2Wrapper(RobotWrapper):
         self._go2_command("stop")
         return True
     ########################################################
-    FOV_DEG = 120
-    MAX_STEP = 1.0
-    TARGET_REACHED_DIST = 1.5
-    TARGET_REACHED_ANGLE = 30
-    MAX_STEPS = 100
+#     FOV_DEG = 120
+#     MAX_STEP = 1.0
+#     TARGET_REACHED_DIST = 1.5
+#     TARGET_REACHED_ANGLE = 30
+#     MAX_STEPS = 100
 
-    def reached_target(self, target: str) -> bool:
-        obj_info = self.get_obj_info(target)
-        return obj_info is not None and obj_info.depth < self.TARGET_REACHED_DIST and abs(self.x_to_angle(obj_info.x)) < self.TARGET_REACHED_ANGLE
+#     def reached_target(self, target: str) -> bool:
+#         obj_info = self.get_obj_info(target)
+#         return obj_info is not None and obj_info.depth < self.TARGET_REACHED_DIST and abs(self.x_to_angle(obj_info.x)) < self.TARGET_REACHED_ANGLE
     
-    def call_llm(self, prompt):
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
-        return response.choices[0].message.content.strip().lower()
+#     def call_llm(self, prompt):
+#         from openai import OpenAI
+#         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+#         response = client.chat.completions.create(
+#             model="gpt-4o",
+#             messages=[{"role": "user", "content": prompt}],
+#             temperature=0.3,
+#         )
+#         return response.choices[0].message.content.strip().lower()
     
-    def x_to_angle(self, x):
-        """
-        Convert x coordinate to angle in degrees.
-        """
-        return (x - 0.5) * self.FOV_DEG
+#     def x_to_angle(self, x):
+#         """
+#         Convert x coordinate to angle in degrees.
+#         """
+#         return (x - 0.5) * self.FOV_DEG
 
-    def build_prompt(self, user_goal="chase the sports ball"):
+#     def build_prompt(self, user_goal="chase the sports ball"):
         
-        obj_info = self.get_obj_info("sports ball")
+#         obj_info = self.get_obj_info("sports ball")
 
-        if obj_info is not None:
-            visual = f"Target is in view at distance {obj_info.depth:.2f} and angle {self.x_to_angle(obj_info.x):.2f} degrees."
-            self.last_target_x = obj_info.x
-        else:
-            visual = "Target is not in view, try turn left or right according to the last seen angle to find it. Target was last seen at angle {:.2f} degrees.".format(self.x_to_angle(self.last_target_x) if hasattr(self, 'last_target_x') else 0.0)
-            # gen_goal_prom = (
-            # f"Write a goal for a robot to {user_goal} with basic behavioral guidance. "
-            # "Include some tips to achive the goal, and how to avoid repetitive actions like continuous turning. "
-            # "Limit the response to 3 sentences and avoid bullet points. "
-            # "Example: 'If you can see the target, chase it quickly.If the angle is small, you would better move forward. Only when the target is not in view, turn left or right to search quickly. Avoid turn left and then turn right repeatedly. You can predict the target's movement and move ahead to catch.'"
-            #     )
-            # goal = self.call_llm(gen_goal_prom)
-        return f"""You are a robot dog in a 2D plane. Your goal is to chase a target object, get close and facing the target. When the target is far away, you need to move faster. When the target is close, you should slow down and face it. You can rotate to adjust your direction.
-The target infomation: {visual}
-Choose your next move: 
-- nav(vx, vy, vyaw) to move in the direction of vx, vy, vyaw. Max vx speed is 2.0 m/s, vy is 0.2m/s and vyaw is 0.9 rad/s (if target angle is +, you should output negative vyaw to compensate).
-Only output one command without any punctuation mark. Do not explain."""
+#         if obj_info is not None:
+#             visual = f"Target is in view at distance {obj_info.depth:.2f} and angle {self.x_to_angle(obj_info.x):.2f} degrees."
+#             self.last_target_x = obj_info.x
+#         else:
+#             visual = "Target is not in view, try turn left or right according to the last seen angle to find it. Target was last seen at angle {:.2f} degrees.".format(self.x_to_angle(self.last_target_x) if hasattr(self, 'last_target_x') else 0.0)
+#             # gen_goal_prom = (
+#             # f"Write a goal for a robot to {user_goal} with basic behavioral guidance. "
+#             # "Include some tips to achive the goal, and how to avoid repetitive actions like continuous turning. "
+#             # "Limit the response to 3 sentences and avoid bullet points. "
+#             # "Example: 'If you can see the target, chase it quickly.If the angle is small, you would better move forward. Only when the target is not in view, turn left or right to search quickly. Avoid turn left and then turn right repeatedly. You can predict the target's movement and move ahead to catch.'"
+#             #     )
+#             # goal = self.call_llm(gen_goal_prom)
+#         return f"""You are a robot dog in a 2D plane. Your goal is to chase a target object, get close and facing the target. When the target is far away, you need to move faster. When the target is close, you should slow down and face it. You can rotate to adjust your direction.
+# The target infomation: {visual}
+# Choose your next move: 
+# - nav(vx, vy, vyaw) to move in the direction of vx, vy, vyaw. Max vx speed is 2.0 m/s, vy is 0.2m/s and vyaw is 0.9 rad/s (if target angle is +, you should output negative vyaw to compensate).
+# Only output one command without any punctuation mark. Do not explain."""
     
-    def _go2_command_stream(self, event, command_queue):
-        vx, vy, vyaw = 0.0, 0.0, 0.0
-        while event.is_set():
-            try:
-                control = command_queue.get(timeout=0.2)
-                if control.startswith("nav(") and control.endswith(")"):
-                    # Parse the action string to extract vx, vy, vyaw
-                    control = control[4:-1].strip()  # Remove 'nav(' and ')'
-                    vx, vy, vyaw = map(float, control.split(','))
-                    self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
-            except queue.Empty:
-                self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
-            except requests.RequestException as e:
-                print_t(f"[Go2] Command request failed: {e}")
+#     def _go2_command_stream(self, event, command_queue):
+#         vx, vy, vyaw = 0.0, 0.0, 0.0
+#         while event.is_set():
+#             try:
+#                 control = command_queue.get(timeout=0.2)
+#                 if control.startswith("nav(") and control.endswith(")"):
+#                     # Parse the action string to extract vx, vy, vyaw
+#                     control = control[4:-1].strip()  # Remove 'nav(' and ')'
+#                     vx, vy, vyaw = map(float, control.split(','))
+#                     self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
+#             except queue.Empty:
+#                 self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
+#             except requests.RequestException as e:
+#                 print_t(f"[Go2] Command request failed: {e}")
 
-    @go2action("require_standing, trigger_movement")
-    def chase(self):
-        step = 0
+#     @go2action("require_standing, trigger_movement")
+#     def chase(self):
+#         step = 0
 
-        event = threading.Event()
-        command_queue = queue.Queue()
-        event.set()
-        command_thread = threading.Thread(target=self._go2_command_stream, args=(event, command_queue))
-        command_thread.start()
+#         event = threading.Event()
+#         command_queue = queue.Queue()
+#         event.set()
+#         command_thread = threading.Thread(target=self._go2_command_stream, args=(event, command_queue))
+#         command_thread.start()
 
-        while step < self.MAX_STEPS:# and not self.reached_target("sports ball"):
-            start_time = time.time()
-            prompt = self.build_prompt()
-            print(f"\n=== Step {step} ===")
-            print("Prompt:\n", prompt)
-            action = self.call_llm(prompt)
-            print("LLM Action:", action)
-            command_queue.put(action)
-            step += 1
-            time.sleep(max(0, 1.0 - (time.time() - start_time)))
+#         while step < self.MAX_STEPS:# and not self.reached_target("sports ball"):
+#             start_time = time.time()
+#             prompt = self.build_prompt()
+#             print(f"\n=== Step {step} ===")
+#             print("Prompt:\n", prompt)
+#             action = self.call_llm(prompt)
+#             print("LLM Action:", action)
+#             command_queue.put(action)
+#             step += 1
+#             time.sleep(max(0, 1.0 - (time.time() - start_time)))
 
-        event.clear()
-        time.sleep(0.5)  # Give some time for the last command to be processed
-        self._go2_command("nav", vx=0, vy=0, vyaw=0)
-        if self.reached_target("sports ball"):
-            print("✅ Target reached!")
-        else:
-            print("❌ Max steps reached. Final distance:")
+#         event.clear()
+#         time.sleep(0.5)  # Give some time for the last command to be processed
+#         self._go2_command("nav", vx=0, vy=0, vyaw=0)
+#         if self.reached_target("sports ball"):
+#             print("✅ Target reached!")
+#         else:
+#             print("❌ Max steps reached. Final distance:")
 
     ########################################################
     @go2action("require_standing, trigger_movement")
@@ -749,7 +755,7 @@ Only output one command without any punctuation mark. Do not explain."""
 
             remaining_angle = delta_rad - accumulated_angle
 
-            # print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
+            print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
             if abs(remaining_angle) < 0.01 or delta_rad * remaining_angle < 0:
                 # If the remaining angle is small enough or we have overshot the target
                 break
