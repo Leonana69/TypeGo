@@ -84,8 +84,10 @@ public:
         image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             "/camera/image_raw", 10, std::bind(&AdaptiveWaypointNode::image_callback, this, std::placeholders::_1));
         timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&AdaptiveWaypointNode::on_timer, this));
-        waypoint_pub_ = this->create_publisher<typego_interface::msg::WayPointArray>("/waypoints", 10);
-        waypoint_marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoint_markers", 10);
+
+        auto qos = rclcpp::QoS(1).reliable().transient_local();
+        waypoint_pub_ = this->create_publisher<typego_interface::msg::WayPointArray>("/waypoints", qos);
+        waypoint_marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoint_markers", qos);
         load_waypoints(waypoint_file_);
 
         const char* edge_service_ip = std::getenv("EDGE_SERVICE_IP");
@@ -235,7 +237,10 @@ private:
                     }
                 }
             }
-            waypoints_.push_back({next_id_, x, y, labels[label_index]});
+            std::string label = (label_index >= 0 && label_index < 3)
+                      ? labels[label_index]
+                      : std::string("No label");
+            waypoints_.push_back({next_id_, x, y, label});
             next_id_++;
             save_waypoints(waypoint_file_);
         }
@@ -359,6 +364,7 @@ private:
             text_marker.color.a = 1.0f;
             text_marker.text = wp.label.empty() ? "No label" : wp.label;
             marker_array.markers.push_back(text_marker);
+
             typego_interface::msg::WayPoint wp_msg;
             wp_msg.id = wp.id;
             wp_msg.x = wp.x;
