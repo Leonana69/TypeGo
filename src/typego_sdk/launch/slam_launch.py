@@ -41,7 +41,7 @@ def generate_launch_description():
 
     resource_dir = os.getenv('RESOURCE_DIR', '/home/guojun/Documents/Go2-Livox-ROS2/src/typego_sdk/resource/')
     map_params = {
-        'map_file_name': os.path.join(resource_dir, '2nd-floor'),
+        'map_file_name': os.path.join(resource_dir, '4th'),
         'map_start_pose': [0.1, -0.5, 0.0]
     }
 
