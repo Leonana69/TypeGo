@@ -4,7 +4,6 @@ from PIL import Image
 from overrides import overrides
 import json
 
-from typego.skillset import SkillSet, SkillSetLevel
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.yolo_client import YoloClient
 from typego.robot_info import RobotInfo
@@ -79,37 +78,6 @@ class VirtualRobotWrapper(RobotWrapper):
             "y": 0.0,
             "yaw": 0.0,
         }
-
-        # extra movement skills
-        self.ll_skillset.add_low_level_skill("stand_up", lambda: None, "Stand up")
-        self.ll_skillset.add_low_level_skill("lying_down", lambda: None, "Stand down")
-        
-        high_level_skills = [
-            {
-                "name": "scan",
-                "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
-                "description": "Rotate to find a specific object $1 when it's *not* in current view",
-            },
-            {
-                "name": "scan_description",
-                "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
-                "description": "Rotate to find an abstract object $1 when it's *not* in current view",
-            },
-            {
-                "name": "orienting",
-                "definition": "{_1=ox($1);rotate((0.5-_1)*80)}",
-                "description": "Rotate to align with object $1",
-            },
-            {
-                "name": "goto",
-                "definition": "?orienting($1){move(80, 0)}",
-                "description": "Move to object $1 in the view"
-            }
-        ]
-
-        self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
-        for skill in high_level_skills:
-            self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
 
     @overrides
     def start(self) -> bool:

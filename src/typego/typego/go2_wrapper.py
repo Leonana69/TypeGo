@@ -9,6 +9,7 @@ import json
 import queue
 from enum import Enum
 from scipy.spatial.transform import Rotation as R
+from functools import wraps
 
 import rclpy
 from rclpy.node import Node
@@ -23,22 +24,16 @@ from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture
+from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture, robot_skill
 from typego.robot_info import RobotInfo
-from typego.minispec_interpreter import MiniSpecProgram
 from typego.yolo_client import YoloClient
-from typego.skillset import SkillSet, SkillArg, SkillSetLevel
 from typego.utils import quaternion_to_rpy, print_t, ImageRecover
 from typego.pid import PID
-
-
 from typego_interface.msg import WayPointArray
 
-GO2_CAM_K = np.array([
-    [818.18507419, 0.0, 637.94628188],
-    [0.0, 815.32431463, 338.3480119],
-    [0.0, 0.0, 1.0]
-], dtype=np.float32)
+GO2_CAM_K = np.array([[818.18507419, 0.0, 637.94628188],
+                      [0.0, 815.32431463, 338.3480119],
+                      [0.0, 0.0, 1.0]], dtype=np.float32)
 
 GO2_CAM_D = np.array([[-0.07203219],
                       [-0.05228525],
@@ -319,6 +314,8 @@ def go2action(feature_str: str = None):
     """
     def decorator(func):
         features = [f.strip() for f in feature_str.split(",")] if feature_str else []
+        
+        @wraps(func)
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
             print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
             if not self.action_lock.acquire(timeout=0.1):
@@ -341,19 +338,20 @@ def go2action(feature_str: str = None):
             
             try:
                 print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
-                rslt = func(self, *args, **kwargs)
+                result = func(self, *args, **kwargs)
             finally:
                 print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
                 self.action_lock.release()
 
             if "trigger_movement" in features:
                 self.posture = RobotPosture.STANDING
-            return rslt
+            return result
+        
         return wrapper
     return decorator
 
 class Go2Wrapper(RobotWrapper):
-    def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
+    def __init__(self, robot_info: RobotInfo, system_skill_func: dict[str, callable]):
         self.init_ros_node()
         super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node), system_skill_func)
 
@@ -377,41 +375,43 @@ class Go2Wrapper(RobotWrapper):
         else:
             print_t(f"[Go2] {response.text}")
 
+        print_t(self.registry.get_skill_list())
+
         # Define the robot skillset
-        self.ll_skillset.add_low_level_skill("stand_up", lambda: self._go2_command('stand_up'), "Stand up")
-        self.ll_skillset.add_low_level_skill("lie_down", lambda: self._go2_command('stand_down'), "Stand down")
-        self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
-        self.ll_skillset.add_low_level_skill("stop", self.stop_action, "Stop current action")
-        self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
-        self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
-        self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
+        # self.ll_skillset.add_low_level_skill("stand_up", lambda: self._go2_command('stand_up'), "Stand up")
+        # self.ll_skillset.add_low_level_skill("lie_down", lambda: self._go2_command('stand_down'), "Stand down")
+        # self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
+        # self.ll_skillset.add_low_level_skill("stop", self.stop_action, "Stop current action")
+        # self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
+        # self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
+        # self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
 
-        high_level_skills = [
-            {
-                "name": "scan",
-                "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
-                "description": "Rotate to find a specific object $1 when it's *not* in current view",
-            },
-            {
-                "name": "scan_description",
-                "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
-                "description": "Rotate to find an abstract object $1 when it's *not* in current view",
-            },
-            {
-                "name": "orienting",
-                "definition": "{_1=object_x($1);rotate((0.5-_1)*80)}",
-                "description": "Rotate to align with object $1",
-            },
-            {
-                "name": "goto_object",
-                "definition": "2{orienting($1);_1=object_distance($1)/3;{move(_1, 0)}}",
-                "description": "Move to object $1 in the view (orienting then go forward)"
-            }
-        ]
+        # high_level_skills = [
+        #     {
+        #         "name": "scan",
+        #         "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
+        #         "description": "Rotate to find a specific object $1 when it's *not* in current view",
+        #     },
+        #     {
+        #         "name": "scan_description",
+        #         "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
+        #         "description": "Rotate to find an abstract object $1 when it's *not* in current view",
+        #     },
+        #     {
+        #         "name": "orienting",
+        #         "definition": "{_1=object_x($1);rotate((0.5-_1)*80)}",
+        #         "description": "Rotate to align with object $1",
+        #     },
+        #     {
+        #         "name": "goto_object",
+        #         "definition": "2{orienting($1);_1=object_distance($1)/3;{move(_1, 0)}}",
+        #         "description": "Move to object $1 in the view (orienting then go forward)"
+        #     }
+        # ]
 
-        self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
-        for skill in high_level_skills:
-            self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
+        # self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
+        # for skill in high_level_skills:
+        #     self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
 
         self.function_queue = queue.Queue()
         self.function_thread = threading.Thread(target=self.worker)
@@ -473,9 +473,10 @@ class Go2Wrapper(RobotWrapper):
             try:
                 action = self.function_queue.get(0.1)
                 print_t(f"[Go2] Executing action: {action}")
-                self.active_program = MiniSpecProgram(self, None)
-                self.active_program.parse(action)
-                self.active_program.eval()
+                # self.active_program = MiniSpecProgram(self, None)
+                # self.active_program.parse(action)
+                # self.active_program.eval()
+                self.registry.execute(action)
             except queue.Empty:
                 pass
 
@@ -560,15 +561,35 @@ class Go2Wrapper(RobotWrapper):
                 print_t(f"[Go2] Command request failed: {e}")
                 continue
 
+    @robot_skill("stand_up", description="Make the robot stand up.")
+    def stand_up(self):
+        self._go2_command("stand_up")
+
+    @robot_skill("sit_down", description="Make the robot sit down.")
+    def sit_down(self):
+        self._go2_command("stand_down")
+
+    @robot_skill("orienting", description="Orient the robot's head.")
+    def orienting(self, object: str) -> bool:
+        for _ in range(2):
+            info = self.get_obj_info(object)
+            if info is None:
+                return False
+            if (info.x - 0.5) < 0.1:
+                return True
+            
+            self.rotate((0.5 - info.x) * 80)
+
+    @robot_skill("look_object", description="Look at a specific object")
     @go2action("require_standing")
-    def look_object(self, object_name: str, timeout: float = 4.0) -> bool:
+    def look_object(self, object: str) -> bool:
         body_pitch = self.observation.orientation[1]
         body_yaw = 0.0
 
         begin = time.time()
-        while not self.stop_action_event.is_set() and time.time() - begin < timeout:
+        while not self.stop_action_event.is_set() and time.time() - begin < 4.0:
             start_time = time.time()
-            info = self.get_obj_info(object_name)
+            info = self.get_obj_info(object)
 
             if info is None:
                 return False
@@ -768,6 +789,7 @@ class Go2Wrapper(RobotWrapper):
         self._go2_command("stop")
         return True
     
+    @robot_skill("nod", description="Nod the robot's head.")
     @go2action("require_standing")
     def nod(self) -> bool:
         """
@@ -783,6 +805,7 @@ class Go2Wrapper(RobotWrapper):
         self._go2_command("stop")
         return True
     
+    @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")
     @go2action("require_standing")
     def look_up(self) -> bool:
         """
@@ -798,6 +821,7 @@ class Go2Wrapper(RobotWrapper):
         print_t("-> Look up end")
         return True
     
+    @robot_skill("goto_waypoint", description="Go to a specific waypoint")
     @go2action("require_standing, trigger_movement")
     def goto_waypoint(self, id: int) -> bool:
         print(f"-> Go to waypoint {id}")

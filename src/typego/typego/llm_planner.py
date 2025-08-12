@@ -17,9 +17,6 @@ class LLMPlanner():
 
         S2Plan.init_default()
 
-        with open(os.path.join(CURRENT_DIR, f"./resource/prompt_probe.txt"), "r") as f:
-            self.prompt_probe = f.read()
-
         self.s0_prompt = open(os.path.join(CURRENT_DIR, f"./resource/s0_prompt.txt"), "r").read()
         self.s0_examples = open(os.path.join(CURRENT_DIR, f"./resource/s0_examples.txt"), "r").read()
 
@@ -35,13 +32,6 @@ class LLMPlanner():
         self.robot = robot
 
     def s0_plan(self, inst) -> str:
-        # robot_skills = ""
-        # robot_skills += f"#### Low-level skills\n"
-        # robot_skills += str(self.robot.ll_skillset._sim())
-        # if self.robot.hl_skillset is not None:
-        #     robot_skills += f"\n#### High-level skills\n"
-        #     robot_skills += str(self.robot.hl_skillset._sim())
-
         state = "State: " + self.robot.get_state()
 
         scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
@@ -62,11 +52,8 @@ class LLMPlanner():
 
     def s1_plan(self, inst: str | None) -> str:
         robot_skills = ""
-        robot_skills += f"#### Low-level skills\n"
-        robot_skills += str(self.robot.ll_skillset)
-        if self.robot.hl_skillset is not None:
-            robot_skills += f"\n#### High-level skills\n"
-            robot_skills += str(self.robot.hl_skillset)
+        robot_skills += f"#### Skills\n"
+        robot_skills += "\n".join(self.robot.registry.get_skill_list())
 
         state = "State: " + self.robot.get_state() + "\n\n"
         print_t(f"[S1] Current S2: {S2Plan.CURRENT.content}")
@@ -123,8 +110,3 @@ class LLMPlanner():
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
-
-    def probe(self, query: str) -> str:
-        prompt = self.prompt_probe.format(scene_description=self.robot.get_obj_list_str(), query=query)
-        print_t(f"[P] Execution request: {query}")
-        return self.llm.request(prompt, self.model_type)

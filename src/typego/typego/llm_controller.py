@@ -38,10 +38,9 @@ class LLMController():
 
         self.planner = LLMPlanner()
 
-        self.controller_func = [
-            self.user_log,
-            self.probe
-        ]
+        self.controller_func = {
+            "user_log": self.user_log
+        }
 
         self.latest_inst = None
         self.latest_inst_lock = threading.Lock()
@@ -58,6 +57,7 @@ class LLMController():
 
         if robot_info.robot_type == "virtual":
             self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
+            pass
         elif robot_info.robot_type == "go2":
             from typego.go2_wrapper import Go2Wrapper
             self.robot = Go2Wrapper(robot_info, self.controller_func)
@@ -97,9 +97,6 @@ class LLMController():
             self._send_message(f'[LOG] {text}')
             print_t(f'[LOG] {text}')
         return True
-
-    def probe(self, query: str) -> str:
-        return self.planner.probe(query)
 
     def _send_message(self, message: str):
         if self.message_queue is not None:

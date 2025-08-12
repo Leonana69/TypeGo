@@ -6,8 +6,7 @@
 class GStreamerNode : public rclcpp::Node {
 public:
     GStreamerNode() : Node("gstreamer_node") {
-        auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
-        publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", qos);
+        publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", 10);
 
         gst_init(nullptr, nullptr);
 
@@ -36,11 +35,10 @@ public:
         gst_app_sink_set_emit_signals((GstAppSink*)appsink_, true);
         gst_app_sink_set_max_buffers((GstAppSink*)appsink_, 1);
         gst_app_sink_set_drop((GstAppSink*)appsink_, true);
-
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 
         timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(100),
+            std::chrono::milliseconds(33),
             std::bind(&GStreamerNode::timer_callback, this)
         );
     }

@@ -9,3 +9,4 @@ __pycache__/
 hyrch_serving_*
 cache/
 test/
+deprecated/

@@ -9,11 +9,11 @@ import re
 import numpy as np
 from collections import deque
 from enum import Enum
+import inspect
 
-from typego.skillset import SkillSet
 from typego.robot_info import RobotInfo
 from typego.yolo_client import ObjectInfo
-from typego.skill_item import SKILL_RET_TYPE
+from typego.skill_item import SKILL_RET_TYPE, SkillRegistry
 from typego.utils import evaluate_value
 
 from typego_interface.msg import WayPointArray, WayPoint
@@ -284,35 +284,61 @@ class RobotObservation(ABC):
     def fetch_command(self) -> str | None:
         return None
 
+def robot_skill(name: str, description: str = ""):
+    def deco(fn):
+        sig = inspect.signature(fn)
+        params = {
+            name: param.annotation
+            for name, param in sig.parameters.items()
+            if name != "self" and param.annotation != inspect._empty
+        }
+        setattr(fn, "_skill_name", name)
+        setattr(fn, "_skill_description", description)
+        setattr(fn, "_skill_params", params)
+        return fn
+    return deco
+
 class RobotWrapper(ABC):
-    def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: list[callable]):
+    def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: dict[str, callable] = None):
         self.robot_info = robot_info
         self._observation = observation
-        self._user_log = controller_func[0]
-        self._probe = controller_func[1]
-        common_movement_skill_func = [
-            self.move,
-            self.rotate,
-        ]
+        self._user_log = controller_func.get("user_log", lambda x: True)
 
-        common_vision_skill_func = [
-            self.is_visible,
-            self.object_x,
-            self.object_y,
-            self.object_width,
-            self.object_height,
-            self.object_distance,
-            self.take_picture
-        ]
+        self.registry = SkillRegistry()
+        self._auto_register_skills()
 
-        other_skills = [
-            self.log,
-            self.delay,
-            self.probe
-        ]
+    def _auto_register_skills(self):
+        """
+        Find methods tagged with @skill on any class in the MRO, then register
+        the *bound override* from this instance. Subclasses need not re-decorate.
+        """
+        # Map skill name -> (method_name_on_class, description)
+        declared_skills: dict[str, tuple[str, str]] = {}
 
-        self.ll_skillset: SkillSet = SkillSet.get_common_skillset(common_movement_skill_func, common_vision_skill_func, other_skills)
-        self.hl_skillset: Optional[SkillSet] = None
+        for cls in self.__class__.mro():
+            for name, obj in cls.__dict__.items():
+                # unwrap abstractmethod / function wrappers to reach original
+                func = obj
+                if isinstance(func, (staticmethod, classmethod)):
+                    func = func.__func__
+                # only plain callables
+                if not callable(func):
+                    continue
+                sk_name = getattr(func, "_skill_name", None)
+                if not sk_name:
+                    continue
+                sk_desc = getattr(func, "_skill_description", "")
+                sk_params = getattr(func, "_skill_params", {})
+                # first occurrence in MRO wins (nearest subclass)
+                declared_skills.setdefault(sk_name, (name, sk_desc, sk_params))
+
+        for skill_name, (method_name, sk_desc, sk_params) in declared_skills.items():
+            # get the *bound* method from the instance (subclass override)
+            bound = getattr(self, method_name, None)
+            if not callable(bound):
+                continue
+            # register; SkillRegistry will extract signature (ignores self)
+            self.registry.register(skill_name, description=sk_desc, params=sk_params)(bound)
 
     @abstractmethod
     def start(self) -> bool:
@@ -323,15 +349,16 @@ class RobotWrapper(ABC):
         pass
 
     @property
-    def observation(self) -> RobotObservation:
-        return self._observation
+    def observation(self) -> RobotObservation: return self._observation
 
     # movement skills
     @abstractmethod
+    @robot_skill("move", description="Move by (dx, dy) m distance (dx: +forward, dy: +left)")
     def move(self, dx: float, dy: float) -> bool:
         pass
 
     @abstractmethod
+    @robot_skill("rotate", description="Rotate by deg degrees (deg: +left or clockwise)")
     def rotate(self, deg: float) -> bool:
         pass
 
@@ -391,16 +418,11 @@ class RobotWrapper(ABC):
     
     def object_distance(self, object_name: str) -> float | str:
         return self._get_object_attribute(object_name, 'depth')
-    
+
+    @robot_skill("take_picture", description="Take a picture and save it")
     def take_picture(self) -> bool:
         return self._user_log(self.observation.image)
-    
+
+    @robot_skill("log", description="Log a message")
     def log(self, message: str) -> bool:
         return self._user_log(message)
-
-    def delay(self, sec: float) -> bool:
-        time.sleep(sec)
-        return True
-    
-    def probe(self, query: str) -> SKILL_RET_TYPE:
-        return evaluate_value(self._probe(query))
