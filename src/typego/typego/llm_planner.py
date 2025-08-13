@@ -38,12 +38,11 @@ class LLMPlanner():
         scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
 
         prompt = self.s0_prompt.format(example_plans=self.s0_examples,
-                                            user_instruction=inst,
-                                            # robot_skills=robot_skills,
-                                            robot_state=state,
-                                            scene_description=scene_description)
+                                        user_instruction=inst,
+                                        robot_state=state,
+                                        scene_description=scene_description)
 
-        ret = self.llm.request(prompt, ModelType.LOCAL_1B)
+        ret = self.llm.request(prompt, ModelType.LOCAL_1B).split('\n')[0].strip()
         with open(CHAT_LOG_DIR + "s0_log.txt", "a") as f:
             remove_leading_prompt = prompt#.split("# CURRENT TASK", 1)[-1]
             remove_leading_prompt += ret

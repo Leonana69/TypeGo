@@ -352,14 +352,44 @@ class RobotWrapper(ABC):
     def observation(self) -> RobotObservation: return self._observation
 
     # movement skills
+    # @abstractmethod
+    # @robot_skill("move", description="Move by (dx, dy) m distance (dx: +forward, dy: +left)")
+    # def move(self, dx: float, dy: float) -> bool:
+    #     pass
+
     @abstractmethod
-    @robot_skill("move", description="Move by (dx, dy) m distance (dx: +forward, dy: +left)")
-    def move(self, dx: float, dy: float) -> bool:
+    @robot_skill("move_forward", description="Move forward by a certain distance (m)")
+    def move_forward(self, distance: float) -> bool:
         pass
 
     @abstractmethod
-    @robot_skill("rotate", description="Rotate by deg degrees (deg: +left or clockwise)")
-    def rotate(self, deg: float) -> bool:
+    @robot_skill("move_back", description="Move back by a certain distance (m)")
+    def move_back(self, distance: float) -> bool:
+        pass
+
+    @abstractmethod
+    @robot_skill("move_left", description="Move left by a certain distance (m)")
+    def move_left(self, distance: float) -> bool:
+        pass
+
+    @abstractmethod
+    @robot_skill("move_right", description="Move right by a certain distance (m)")
+    def move_right(self, distance: float) -> bool:
+        pass
+
+    # @abstractmethod
+    # @robot_skill("rotate", description="Rotate by deg degrees (deg: +left or clockwise)")
+    # def rotate(self, deg: float) -> bool:
+    #     pass
+
+    @abstractmethod
+    @robot_skill("turn_left", description="Rotate counter-clockwise by a certain angle (degrees)")
+    def turn_left(self, deg: float) -> bool:
+        pass
+
+    @abstractmethod
+    @robot_skill("turn_right", description="Rotate clockwise by a certain angle (degrees)")
+    def turn_right(self, deg: float) -> bool:
         pass
 
     @abstractmethod

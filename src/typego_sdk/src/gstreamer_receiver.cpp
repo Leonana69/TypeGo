@@ -43,7 +43,7 @@ public:
         gst_app_sink_set_drop((GstAppSink*)appsink_, true);
         
         // Configure appsink with proper synchronization
-        GstAppSinkCallbacks callbacks = { nullptr };
+        GstAppSinkCallbacks callbacks;
         callbacks.eos = nullptr;
         callbacks.new_preroll = nullptr;
         callbacks.new_sample = &GStreamerNode::new_sample_callback;

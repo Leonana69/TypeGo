@@ -54,7 +54,7 @@ class SkillArg:
         self.arg_name = arg_name
         self.arg_type = arg_type
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.arg_name}: {self.arg_type.__name__}"
 
 class SkillItem(ABC):
@@ -79,7 +79,7 @@ class SkillItem(ABC):
         for k, v in params.items():
             self._args.append(SkillArg(k, v))
 
-    def parse_args(self, args_str_list: list[SKILL_ARG_TYPE], allow_positional_args: bool = False):
+    def parse_args(self, args_str_list: list[SKILL_ARG_TYPE], allow_positional_args: bool = False) -> list[SKILL_ARG_TYPE]:
         """Parses the string of arguments and converts them to the expected types."""
         # Check the number of arguments
         if len(args_str_list) != len(self.args):

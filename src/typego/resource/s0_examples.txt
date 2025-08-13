@@ -1,93 +1,67 @@
-# EXAMPLE 1
-## INSTRUCTION
-Go around the hallway and check if there is anyone there. Then report back to me.
-
-## ROBOT STATE
-State: {"time": "14:16:08", "posture": "standing", "current_waypoint_id": 2}
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "label": "room"},
-	{"id": 2, "label": "room"},
-	{"id": 3, "label": "hallway"}
-]
-
-## OUTPUT
-goto_waypoint(3)
-
-
-------------
-# EXAMPLE 2
-## INSTRUCTION
-Play with the person.
-
-## ROBOT STATE
-State: {"time": "14:16:12", "posture": "moving", "current_waypoint_id": 5}
-
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "person", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-## OUTPUT
-goto_object("person")
-
-
-------------
-# EXAMPLE 3
 ## INSTRUCTION
 Turn right.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "standing", "current_waypoint_id": 2}
+{"posture":"standing"}
 
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
+## SCENE
+-
 
 ## OUTPUT
-rotate(-90)
+turn_right(90)
 
+----
 
-------------
-# EXAMPLE 4
 ## INSTRUCTION
-Find the chair behind you.
+Go to the hallway and report back.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 5}
+{"posture":"standing"}
 
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "bottle", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
+## SCENE
+Waypoints: [{"id":1,"label":"room"},{"id":3,"label":"hallway"}]
 
 ## OUTPUT
-rotate(180)
+goto_waypoint(3)
 
+----
 
-------------
-# EXAMPLE 5
 ## INSTRUCTION
-Hello.
+Answer my question.
 
 ## ROBOT STATE
-State: {"time": "14:16:08", "posture": "moving", "current_waypoint_id": 3}
+{"posture":"standing"}
 
-## SCENE DESCRIPTION
-Objects: [
-    {"name": "table", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
+## SCENE
+-
 
 ## OUTPUT
 nod()
+
+----
+
+## INSTRUCTION
+Face the apple.
+
+## ROBOT STATE
+{"posture":"standing"}
+
+## SCENE
+Objects: [{"name":"apple"}]
+
+## OUTPUT
+orienting("apple")
+
+----
+
+## INSTRUCTION
+Take a photo.
+
+## ROBOT STATE
+{"posture":"standing"}
+
+## SCENE
+-
+
+## OUTPUT
+take_picture()

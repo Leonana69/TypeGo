@@ -57,7 +57,12 @@ class Go2Observation(RobotObservation):
             ROSImage,
             '/camera/image_raw',
             self._image_callback,
-            10
+            QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            )
         )
 
         # Subscribe to /tf
@@ -569,7 +574,7 @@ class Go2Wrapper(RobotWrapper):
     def sit_down(self):
         self._go2_command("stand_down")
 
-    @robot_skill("orienting", description="Orient the robot's head.")
+    @robot_skill("orienting", description="Orient the robot's head to an object.")
     def orienting(self, object: str) -> bool:
         for _ in range(2):
             info = self.get_obj_info(object)
@@ -616,9 +621,9 @@ class Go2Wrapper(RobotWrapper):
 
         return True
 
-    @go2action("require_standing, trigger_movement")
-    @overrides
-    def move(self, dx: float, dy: float) -> bool:
+    # @go2action("require_standing, trigger_movement")
+    # @overrides
+    def _move(self, dx: float, dy: float) -> bool:
         """
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
@@ -653,6 +658,37 @@ class Go2Wrapper(RobotWrapper):
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
         self._go2_command("stop")
         return True
+    
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def move_forward(self, distance: float) -> bool:
+        return self._move(distance, 0.0)
+    
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def move_back(self, distance: float) -> bool:
+        return self._move(-distance, 0.0)
+    
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def move_left(self, distance: float) -> bool:
+        return self._move(0.0, distance)
+    
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def move_right(self, distance: float) -> bool:
+        return self._move(0.0, -distance)
+
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def turn_left(self, deg: float) -> bool:
+        return self._rotate(deg)
+
+    @go2action("require_standing, trigger_movement")
+    @overrides
+    def turn_right(self, deg: float) -> bool:
+        return self._rotate(-deg)
+
     ########################################################
 #     FOV_DEG = 120
 #     MAX_STEP = 1.0
@@ -747,9 +783,9 @@ class Go2Wrapper(RobotWrapper):
 #             print("❌ Max steps reached. Final distance:")
 
     ########################################################
-    @go2action("require_standing, trigger_movement")
-    @overrides
-    def rotate(self, deg: float) -> bool:
+    # @go2action("require_standing, trigger_movement")
+    # @overrides
+    def _rotate(self, deg: float) -> bool:
         """
         Rotates the robot by the specified angle in degrees.
         """
