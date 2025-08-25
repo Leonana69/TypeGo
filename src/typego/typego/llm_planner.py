@@ -4,6 +4,7 @@ from typego.llm_wrapper import LLMWrapper, ModelType
 from typego.utils import print_t
 from typego.robot_wrapper import RobotWrapper
 from typego.s2 import S2Plan
+from typego.yolo_client import ObjectInfoEncoder
 
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
@@ -32,15 +33,9 @@ class LLMPlanner():
         self.robot = robot
 
     def s0_plan(self, inst) -> str:
-        state = "State: " + self.robot.get_state()
-
-        scene_description = "Objects: " + self.robot.get_obj_list_str() + "\n\n"
-        scene_description += "Waypoints: " + self.robot.observation.slam_map.get_waypoint_list_str()
-
         prompt = self.s0_prompt.format(example_plans=self.s0_examples,
                                         user_instruction=inst,
-                                        robot_state=state,
-                                        scene_description=scene_description)
+                                        observation=json.dumps(self.robot.observation.obs(), cls=ObjectInfoEncoder, indent=2))
 
         ret = self.llm.request(prompt, ModelType.LOCAL_1B).split('\n')[0].strip()
         with open(CHAT_LOG_DIR + "s0_log.txt", "a") as f:

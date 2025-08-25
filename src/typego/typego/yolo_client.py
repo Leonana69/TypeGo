@@ -3,7 +3,9 @@ from PIL import Image, ImageDraw, ImageFont
 from contextlib import asynccontextmanager
 
 import json, os, time
+from json import JSONEncoder
 import asyncio, aiohttp, threading
+import numpy as np
 
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
@@ -26,10 +28,18 @@ class ObjectInfo:
         self.h: float = float(h)
         self.depth: float = float(depth) if depth is not None else None
 
-    def from_json(json_data: dict):
-        return ObjectInfo(json_data['name'], json_data['x'], json_data['y'], json_data['w'], json_data['h'], json_data['depth'])
+    @classmethod
+    def from_json(cls, json_data: dict):
+        return cls(
+            json_data['name'], 
+            json_data['x'], 
+            json_data['y'], 
+            json_data['w'], 
+            json_data['h'], 
+            json_data.get('depth')  # Use get() to handle missing key gracefully
+        )
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         base_info = {
             "name": self.name,
             "x": round(self.x, 2),
@@ -41,6 +51,33 @@ class ObjectInfo:
             base_info["dist"] = round(self.depth, 2)
 
         return json.dumps(base_info)
+    
+    def to_json_format(self):
+        """Returns the same format as __repr__ but as a dict instead of string"""
+        base_info = {
+            "name": self.name,
+            "x": round(self.x, 2),
+            "y": round(self.y, 2),
+            "size": [round(self.w, 2), round(self.h, 2)]
+        }
+
+        if self.depth is not None:
+            base_info["dist"] = round(self.depth, 2)
+
+        return base_info
+    
+class ObjectInfoEncoder(JSONEncoder):
+    """Custom JSON encoder for ObjectInfo class"""
+    def default(self, obj):
+        if isinstance(obj, ObjectInfo):
+            return obj.to_json_format()
+        elif isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 """
 Access the YOLO service through http.
@@ -57,7 +94,7 @@ class YoloClient():
         print_t(f"[Y] YoloClient initialized with service url: {self.service_url}")
 
     @property
-    def latest_result(self) -> tuple[Image.Image, list] | None:
+    def latest_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
         return self._latest_result
 
     @staticmethod

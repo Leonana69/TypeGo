@@ -56,7 +56,7 @@ H) Logging / chatty text without clear action → log("<short paraphrase>")
 
 # OBJECT MATCH
 - If an object name is in SCENE Objects list, use its "name" string exactly.
-- If not present, still use the user’s noun as the object string.
+- If not present, still use the user's noun as the object string.
 
 # SAFETY CLIPS
 - Degrees ∈ [5,180]; Distances ∈ [0.1,2.0]; Round to one decimal if needed.
@@ -68,10 +68,7 @@ H) Logging / chatty text without clear action → log("<short paraphrase>")
 ## USER INSTRUCTION
 {user_instruction}
 
-## ROBOT STATE
-{robot_state}
-
-## SCENE
-{scene_description}
+## OBSERVATION
+{observation}
 
 ## OUTPUT

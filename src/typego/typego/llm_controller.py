@@ -6,7 +6,6 @@ import time
 import threading
 
 from typego.yolo_client import YoloClient
-# from typego.virtual_robot_wrapper import VirtualRobotWrapper
 from typego.robot_wrapper import RobotPosture
 from typego.llm_planner import LLMPlanner
 from typego.utils import print_t
@@ -55,9 +54,9 @@ class LLMController():
         self.s0_control = threading.Event()
         self.s0_control.set()
 
-        # if robot_info.robot_type == "virtual":
-        #     self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
-        #     pass
+        if robot_info.robot_type == "virtual":
+            from typego.virtual_robot_wrapper import VirtualRobotWrapper
+            self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
         if robot_info.robot_type == "go2":
             from typego.go2_wrapper import Go2Wrapper
             self.robot = Go2Wrapper(robot_info, self.controller_func)

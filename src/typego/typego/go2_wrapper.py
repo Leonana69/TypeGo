@@ -46,6 +46,7 @@ class Go2Observation(RobotObservation):
         self.yolo_client = YoloClient(robot_info)
         self.image_receover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.init_ros_obs(node)
+        self.posture = RobotPosture.STANDING
 
     def init_ros_obs(self, node: Node):
         self.map2odom_translation = np.array([0.0, 0.0, 0.0])
@@ -262,13 +263,11 @@ class Go2Observation(RobotObservation):
         return distance < 0.4 and abs(angle) < math.radians(60)
 
     @overrides
-    def _start(self):
-        return
+    def _start(self): return
     
     @overrides
-    def _stop(self):
-        return
-        
+    def _stop(self): return
+
     @overrides
     async def process_image(self, image: Image.Image):
         await self.yolo_client.detect(image)
@@ -276,6 +275,25 @@ class Go2Observation(RobotObservation):
     @overrides
     def fetch_processed_result(self) -> tuple[Image.Image, list] | None:
         return self.yolo_client.latest_result
+
+    @overrides
+    def obs(self) -> dict:
+        return {
+            "t": time.strftime("%H:%M:%S", time.localtime(time.time())),
+            "robot": {
+                "pose_world": {
+                    "x": round(self.position[0], 2),
+                    "y": round(self.position[1], 2),
+                    "yaw": round(self.orientation[2], 2)
+                },
+                "posture": self.posture.name.lower(),
+            },
+            "perception": self.yolo_client.latest_result[1] if self.yolo_client.latest_result else [],
+            "nav": {
+                "waypoints": self.slam_map.get_waypoint_list_str(),
+                "current_wp": self.slam_map.get_nearest_waypoint_id(self.position),
+            }
+        }
 
 class Go2Action:
     event: threading.Event = None
@@ -335,12 +353,12 @@ def go2action(feature_str: str = None):
 
             print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "require_standing" in features:
-                if self.posture == RobotPosture.LYING:
+                if self.observation.posture == RobotPosture.LYING:
                     self._go2_command("stand_up")
 
             if "trigger_movement" in features:
-                self.posture = RobotPosture.MOVING
-            
+                self.observation.posture = RobotPosture.MOVING
+
             try:
                 print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 result = func(self, *args, **kwargs)
@@ -349,7 +367,7 @@ def go2action(feature_str: str = None):
                 self.action_lock.release()
 
             if "trigger_movement" in features:
-                self.posture = RobotPosture.STANDING
+                self.observation.posture = RobotPosture.STANDING
             return result
         
         return wrapper
@@ -361,9 +379,6 @@ class Go2Wrapper(RobotWrapper):
         super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node), system_skill_func)
 
         self.running = True
-        self.posture = RobotPosture.STANDING
-
-        
         self.active_program = None
         self.action_lock = threading.RLock()
         self.stop_action_event = threading.Event()
@@ -503,15 +518,6 @@ class Go2Wrapper(RobotWrapper):
             rclpy.shutdown()
             self.spin_thread.join()
 
-    @overrides
-    def get_state(self) -> str:
-        js = {
-            "time": time.strftime("%H:%M:%S", time.localtime(time.time())),
-            "posture": self.posture.value,
-            "current_waypoint_id": self.observation.slam_map.get_nearest_waypoint_id((self.observation.position[0], self.observation.position[1])),
-        }
-        return json.dumps(js)
-
     def stop_action(self):
         print_t("[Go2] Stopping action...")
         self._go2_command("stop")
@@ -527,9 +533,9 @@ class Go2Wrapper(RobotWrapper):
 
         match command:
             case "stand_up":
-                self.posture = RobotPosture.STANDING
+                self.observation.posture = RobotPosture.STANDING
             case "stand_down":
-                self.posture = RobotPosture.LYING
+                self.observation.posture = RobotPosture.LYING
             case _:
                 pass
 

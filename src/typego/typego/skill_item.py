@@ -1,9 +1,6 @@
-from abc import ABC, abstractmethod
-from overrides import overrides
-import re, inspect
-from typing import Any
-
-from typing import Optional
+from abc import ABC
+import re
+from typing import Any, Optional
 
 SKILL_ARG_TYPE = int | float | str
 SKILL_RET_TYPE = Optional[int | float | bool | str]
@@ -24,7 +21,7 @@ class SkillRegistry:
 
     def get_skill_list(self) -> list[str]:
         """Returns a list of all registered skill names."""
-        return list(self._items.values())
+        return [str(item) for item in self._items.values()]
 
     def execute(
         self,

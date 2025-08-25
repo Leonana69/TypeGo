@@ -7,6 +7,7 @@ import json
 from typego.robot_wrapper import RobotWrapper, RobotObservation
 from typego.yolo_client import YoloClient
 from typego.robot_info import RobotInfo
+from typego.robot_wrapper import RobotPosture
 
 SKILL_EXECUTION_TIME = 2
 
@@ -24,13 +25,15 @@ class VirtualObservation(RobotObservation):
             self.cap = cv2.VideoCapture(int(self.robot_info.extra["capture"]))
             if not self.cap.isOpened():
                 raise RuntimeError("Failed to open GStreamer pipeline")
-            while self.running:
+            while not self._stop_evt.is_set():
                 ret, frame = self.cap.read()
                 if not ret:
                     continue
                 # Convert the frame to RGB and store it in self._image
                 self._image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 cv2.waitKey(1)
+            # while True:
+            #     time.sleep(1)
         self.capture_thread = threading.Thread(target=_capture_spin)
     
     @overrides
@@ -50,34 +53,16 @@ class VirtualObservation(RobotObservation):
     @overrides
     def fetch_processed_result(self) -> tuple[Image.Image, list]:
         return self.yolo_client.latest_result
-
-from enum import Enum
-class Go2Posture(Enum):
-    STANDING = "standing"
-    LYING = "lying"
-    MOVING = "moving"
-
-    @staticmethod
-    def from_string(s: str):
-        if s == "standing":
-            return Go2Posture.STANDING
-        elif s == "lying":
-            return Go2Posture.LYING
-        elif s == "moving":
-            return Go2Posture.MOVING
-        else:
-            raise ValueError(f"Unknown posture: {s}")
+    
+    @overrides
+    def obs(self) -> dict:
+        return {
+            "posture": self.posture
+        }
 
 class VirtualRobotWrapper(RobotWrapper):
     def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
         super().__init__(robot_info, VirtualObservation(robot_info), system_skill_func)
-
-        self.state = {
-            "posture": Go2Posture.STANDING,
-            "x": 0.0,
-            "y": 0.0,
-            "yaw": 0.0,
-        }
 
     @overrides
     def start(self) -> bool:
@@ -89,35 +74,37 @@ class VirtualRobotWrapper(RobotWrapper):
         self.observation.stop()
 
     @overrides
-    def move(self, dx: float, dy: float) -> bool:
-        print(f"-> Move by ({dx}, {dy}) cm")
-        self.state["posture"] = Go2Posture.MOVING
+    def move_forward(self, distance: float) -> bool:
+        print(f"-> Move forward by {distance} cm")
         time.sleep(SKILL_EXECUTION_TIME)
-        # Update the location based on dx and dy
-        self.state["x"] += dx
-        self.state["y"] += dy
-        self.state["posture"] = Go2Posture.STANDING
         return True
 
     @overrides
-    def rotate(self, deg: float) -> bool:
-        print(f"-> Rotate by {deg} degrees")
-        self.state["posture"] = Go2Posture.MOVING
+    def move_back(self, distance: float) -> bool:
+        print(f"-> Move back by {distance} cm")
         time.sleep(SKILL_EXECUTION_TIME)
-        # Update the yaw based on deg
-        self.state["yaw"] += deg
-        self.state["posture"] = Go2Posture.STANDING
+        return True
+
+    @overrides
+    def move_left(self, distance: float) -> bool:
+        print(f"-> Move left by {distance} cm")
+        time.sleep(SKILL_EXECUTION_TIME)
+        return True
+
+    @overrides
+    def move_right(self, distance: float) -> bool:
+        print(f"-> Move right by {distance} cm")
+        time.sleep(SKILL_EXECUTION_TIME)
         return True
     
     @overrides
-    def get_state(self) -> str:
-        return json.dumps(self.state)
+    def turn_left(self, deg: float) -> bool:
+        print(f"-> Turn left by {deg} degrees")
+        time.sleep(SKILL_EXECUTION_TIME)
+        return True
 
-    def _action(self, action: str):
-        match action:
-            case "stand_up":
-                self.state["posture"] = Go2Posture.STANDING
-            case "stand_down":
-                self.state["posture"] = Go2Posture.LYING
-            case _:
-                pass
+    @overrides
+    def turn_right(self, deg: float) -> bool:
+        print(f"-> Turn right by {deg} degrees")
+        time.sleep(SKILL_EXECUTION_TIME)
+        return True
