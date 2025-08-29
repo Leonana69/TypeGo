@@ -16,9 +16,11 @@ from typego.yolo_client import ObjectInfo
 from typego.skill_item import SkillRegistry
 from typego_interface.msg import WayPointArray, WayPoint
 from typego.auto_lock_properties import auto_locked_properties
+from typego.frontend_message import publish
 
 class SubSystem(Enum):
     NONE = auto()
+    DEFAULT = auto()
     MOVEMENT = auto()
     SOUND = auto()
 
@@ -240,6 +242,7 @@ class RobotObservation(ABC):
     _position: ndarray[np.float32]
     _slam_map: "SLAMMap"
     _posture: RobotPosture
+    _command: Optional[str]
     def __init__(self, robot_info: RobotInfo, rate: int,
                  *,
                  consumer_concurrency: int = 1,
@@ -254,6 +257,7 @@ class RobotObservation(ABC):
         self._position = np.array([0.0, 0.0, 0.0])
         self._slam_map = SLAMMap()
         self._posture = RobotPosture.UNINIT
+        self._command = None
 
         # Async infra
         self._thread: Optional[threading.Thread] = None
@@ -400,10 +404,9 @@ def robot_skill(name: str, description: str = "", subsystem: SubSystem = SubSyst
     return deco
 
 class RobotWrapper(ABC):
-    def __init__(self, robot_info: RobotInfo, observation: RobotObservation, controller_func: dict[str, callable] = None):
+    def __init__(self, robot_info: RobotInfo, observation: RobotObservation):
         self.robot_info = robot_info
         self.observation = observation
-        self._user_log = controller_func.get("user_log", lambda x: True)
 
         self.registry = SkillRegistry()
         self._auto_register_skills()
@@ -443,52 +446,51 @@ class RobotWrapper(ABC):
 
     @abstractmethod
     def start(self) -> bool:
-        pass
+        ...
 
     @abstractmethod
     def stop(self):
-        pass
-
-    # movement skills
-    # @abstractmethod
-    # @robot_skill("move", description="Move by (dx, dy) m distance (dx: +forward, dy: +left)")
-    # def move(self, dx: float, dy: float) -> bool:
-    #     pass
+        ...
 
     @abstractmethod
     @robot_skill("move_forward", description="Move forward by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_forward(self, distance: float) -> bool:
-        pass
+        ...
 
     @abstractmethod
     @robot_skill("move_back", description="Move back by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_back(self, distance: float) -> bool:
-        pass
+        ...
 
     @abstractmethod
     @robot_skill("move_left", description="Move left by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_left(self, distance: float) -> bool:
-        pass
+        ...
 
     @abstractmethod
     @robot_skill("move_right", description="Move right by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_right(self, distance: float) -> bool:
-        pass
-
-    # @abstractmethod
-    # @robot_skill("rotate", description="Rotate by deg degrees (deg: +left or clockwise)")
-    # def rotate(self, deg: float) -> bool:
-    #     pass
+        ...
 
     @abstractmethod
     @robot_skill("turn_left", description="Rotate counter-clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
     def turn_left(self, deg: float) -> bool:
-        pass
+        ...
 
     @abstractmethod
     @robot_skill("turn_right", description="Rotate clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
     def turn_right(self, deg: float) -> bool:
-        pass
+        ...
+
+    @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)
+    def take_picture(self) -> bool:
+        publish(self.observation.image)
+        return True
+
+    @robot_skill("log", description="Log a message", subsystem=SubSystem.DEFAULT)
+    def log(self, message: str) -> bool:
+        publish(message)
+        return True
 
     # vision skills
     def get_obj_list(self) -> list[ObjectInfo]:
@@ -542,11 +544,3 @@ class RobotWrapper(ABC):
     
     def object_distance(self, object_name: str) -> float | str:
         return self._get_object_attribute(object_name, 'depth')
-
-    @robot_skill("take_picture", description="Take a picture and save it")
-    def take_picture(self) -> bool:
-        return self._user_log(self.observation.image)
-
-    @robot_skill("log", description="Log a message")
-    def log(self, message: str) -> bool:
-        return self._user_log(message)

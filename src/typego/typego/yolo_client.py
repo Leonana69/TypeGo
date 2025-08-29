@@ -66,13 +66,13 @@ class ObjectInfo:
 
         return base_info
     
-class ObjectInfoEncoder(JSONEncoder):
+class ObservationEncoder(JSONEncoder):
     """Custom JSON encoder for ObjectInfo class"""
     def default(self, obj):
         if isinstance(obj, ObjectInfo):
             return obj.to_json_format()
-        elif isinstance(obj, (np.float32, np.float64)):
-            return float(obj)
+        elif isinstance(obj, (np.float32, np.float64, float)):
+            return round(float(obj), 2)
         elif isinstance(obj, (np.int32, np.int64)):
             return int(obj)
         elif isinstance(obj, np.ndarray):

@@ -61,8 +61,8 @@ class VirtualObservation(RobotObservation):
         }
 
 class VirtualRobotWrapper(RobotWrapper):
-    def __init__(self, robot_info: RobotInfo, system_skill_func: list[callable]):
-        super().__init__(robot_info, VirtualObservation(robot_info), system_skill_func)
+    def __init__(self, robot_info: RobotInfo):
+        super().__init__(robot_info, VirtualObservation(robot_info))
 
     @overrides
     def start(self) -> bool:

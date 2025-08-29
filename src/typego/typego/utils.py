@@ -2,7 +2,7 @@ import datetime, cv2
 import numpy as np
 from numpy import ndarray
 from typego.skill_item import SKILL_RET_TYPE
-from PIL import Image
+from typing import Optional
 
 def get_current_time() -> str:
     """
@@ -25,19 +25,40 @@ def input_t(literal):
     return input(f"[{current_time}] {literal}")
 
 def evaluate_value(s: str) -> SKILL_RET_TYPE:
-    if s.lstrip('-').isdigit():  # Check for negative integers
-        return int(s)
-    elif s.lstrip('-').replace('.', '', 1).isdigit():  # Check for negative floats
-        return float(s)
-    elif s == 'True':
-        return True
-    elif s == 'False':
-        return False
-    elif s == 'None' or len(s) == 0:
+    if not s:  # Empty string or None
         return None
-    else:
-        return s
     
+    # Strip whitespace once at the beginning
+    s_clean = s.strip()
+    
+    # Check for None
+    if s_clean == 'None':
+        return None
+    
+    # Check for boolean values
+    if s_clean == 'True':
+        return True
+    if s_clean == 'False':
+        return False
+    
+    # Check for numeric values
+    if s_clean.startswith(('-', '+')):
+        num_str = s_clean[1:]
+        sign = -1 if s_clean[0] == '-' else 1
+    else:
+        num_str = s_clean
+        sign = 1
+    
+    # Check if it's a valid number
+    if num_str.replace('.', '', 1).isdigit():
+        if '.' in num_str:
+            return sign * float(num_str)
+        else:
+            return sign * int(num_str)
+    
+    # Return original string if no conversion applies
+    return s
+
 def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
     """
     Convert quaternion (qx, qy, qz, qw) to roll, pitch, and yaw (RPY) angles in radians.
@@ -63,75 +84,56 @@ def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
 
 class ImageRecover:
     def __init__(self, K: ndarray, D: ndarray):
+        """
+        Initialize ImageRecover with camera matrix and distortion coefficients.
+        
+        :param K: Camera matrix (3x3)
+        :param D: Distortion coefficients (1x4 or 4x1)
+        """
         self.K = K
         self.D = D
-        self.new_K = None
-        self.map1 = None
-        self.map2 = None
-
-    def process(self, img: cv2.Mat) -> cv2.Mat:
+        self._new_K: Optional[ndarray] = None
+        self._map1: Optional[ndarray] = None
+        self._map2: Optional[ndarray] = None
+        self._image_shape: Optional[tuple] = None
+    
+    def _initialize_maps(self, img_shape: tuple) -> None:
+        """Initialize undistortion maps for the given image shape."""
+        h, w = img_shape[:2]
+        
+        # Compute new camera matrix
+        self._new_K = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
+            self.K, self.D, (w, h), np.eye(3), balance=0.0
+        )
+        
+        # Initialize undistortion maps
+        self._map1, self._map2 = cv2.fisheye.initUndistortRectifyMap(
+            self.K, self.D, np.eye(3), self._new_K, (w, h), cv2.CV_16SC2
+        )
+        
+        self._image_shape = img_shape
+    
+    def process(self, img: np.ndarray) -> np.ndarray:
         """
         Recover the image using the camera matrix and distortion coefficients.
         
-        :param img: Input image
+        :param img: Input image (numpy array)
         :return: Recovered image
         """
-        # Get the dimensions of the image
-        dim1 = img.shape[:2][::-1]
+        # Validate input
+        if img is None or img.size == 0:
+            raise ValueError("Input image is empty or None")
         
-        # Compute new camera matrix
-        if self.new_K is None:
-            self.new_K = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
-                self.K, self.D, dim1, np.eye(3), balance=0.0
-            )
-            self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
-                self.K, self.D, np.eye(3), self.new_K, dim1, cv2.CV_16SC2
-            )
+        # Check if maps need to be (re)initialized
+        current_shape = img.shape[:2]
+        if (self._map1 is None or self._map2 is None or self._image_shape != current_shape):
+            self._initialize_maps(current_shape)
         
         # Remap the image
         recovered_img = cv2.remap(
-            img, self.map1, self.map2,
+            img, self._map1, self._map2,
             interpolation=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_CONSTANT
         )
         
         return recovered_img
-    
-def slam_map_overlay(image: Image.Image, slam_map: np.ndarray) -> Image.Image:
-    """
-    Overlay the SLAM map (grayscale, no transparency) on top of the image at a fixed offset.
-
-    :param image: Input PIL Image (RGB or RGBA)
-    :param slam_map: SLAM map as a 2D NumPy array (grayscale)
-    :return: PIL Image with SLAM map overlaid
-    """
-    if image is None or slam_map is None:
-        return image
-
-    dx = 10
-    dy = 10
-
-    # Convert SLAM map to RGB image (from grayscale)
-    slam_map_pil = Image.fromarray(slam_map)
-    slam_map_pil = slam_map_pil.resize(
-        (slam_map_pil.width * 2, slam_map_pil.height * 2), resample=Image.NEAREST
-    )
-
-    # Paste slam_map onto image at (dx, dy), cropping if needed
-    img_w, img_h = image.size
-    map_w, map_h = slam_map_pil.size
-
-    paste_x = max(0, dx)
-    paste_y = max(0, dy)
-    crop_x = max(0, -dx)
-    crop_y = max(0, -dy)
-    crop_w = min(map_w - crop_x, img_w - paste_x)
-    crop_h = min(map_h - crop_y, img_h - paste_y)
-
-    # Crop the slam map if it would go out of bounds
-    cropped_map = slam_map_pil.crop((crop_x, crop_y, crop_x + crop_w, crop_y + crop_h))
-
-    # Paste directly (no mask, no blending)
-    image.paste(cropped_map, (paste_x, paste_y))
-
-    return image

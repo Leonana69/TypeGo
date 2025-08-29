@@ -44,9 +44,9 @@ class Go2Observation(RobotObservation):
     def __init__(self, robot_info: RobotInfo, node: Node, rate: int = 10):
         super().__init__(robot_info, rate)
         self.yolo_client = YoloClient(robot_info)
-        self.image_receover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
-        self.init_ros_obs(node)
+        self.image_recover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.posture = RobotPosture.STANDING
+        self.init_ros_obs(node)
 
     def init_ros_obs(self, node: Node):
         self.map2odom_translation = np.array([0.0, 0.0, 0.0])
@@ -121,7 +121,7 @@ class Go2Observation(RobotObservation):
         """
         print_t(f"[Go2] Received voice command: {msg.data}")
         # You can implement command parsing and execution here
-        self.latest_command = msg.data.strip().lower()
+        self.command = msg.data.strip().lower()
 
     @overrides
     def fetch_command(self) -> str | None:
@@ -129,15 +129,15 @@ class Go2Observation(RobotObservation):
         Fetch the latest command received from the /voice_command topic.
         Returns the command string or None if no command is available.
         """
-        command = self.latest_command
-        self.latest_command = None
+        command = self.command
+        self.command = None
         return command
 
     def _image_callback(self, msg: ROSImage):
         # Convert ROS Image message to OpenCV image
         cv_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
         # Undistort the image
-        frame = self.image_receover.process(cv_image)
+        frame = self.image_recover.process(cv_image)
         self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
     def _tf_callback(self, msg: TFMessage):
@@ -282,9 +282,9 @@ class Go2Observation(RobotObservation):
             "t": time.strftime("%H:%M:%S", time.localtime(time.time())),
             "robot": {
                 "pose_world": {
-                    "x": round(self.position[0], 2),
-                    "y": round(self.position[1], 2),
-                    "yaw": round(self.orientation[2], 2)
+                    "x": self.position[0],
+                    "y": self.position[1],
+                    "yaw": self.orientation[2]
                 },
                 "posture": self.posture.name.lower(),
             },
@@ -374,9 +374,9 @@ def go2action(feature_str: str = None):
     return decorator
 
 class Go2Wrapper(RobotWrapper):
-    def __init__(self, robot_info: RobotInfo, system_skill_func: dict[str, callable]):
+    def __init__(self, robot_info: RobotInfo):
         self.init_ros_node()
-        super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node), system_skill_func)
+        super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node))
 
         self.running = True
         self.active_program = None

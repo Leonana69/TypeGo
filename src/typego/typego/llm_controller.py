@@ -31,15 +31,8 @@ class S0Event:
         self.action()
 
 class LLMController():
-    def __init__(self, robot_info: RobotInfo, message_queue: Optional[queue.Queue]=None):
+    def __init__(self, robot_info: RobotInfo):
         self.running = False
-        self.message_queue = message_queue
-
-        self.planner = LLMPlanner()
-
-        self.controller_func = {
-            "user_log": self.user_log
-        }
 
         self.latest_inst = None
         self.latest_inst_lock = threading.Lock()
@@ -56,12 +49,12 @@ class LLMController():
 
         if robot_info.robot_type == "virtual":
             from typego.virtual_robot_wrapper import VirtualRobotWrapper
-            self.robot = VirtualRobotWrapper(robot_info, self.controller_func)
+            self.robot = VirtualRobotWrapper(robot_info)
         if robot_info.robot_type == "go2":
             from typego.go2_wrapper import Go2Wrapper
-            self.robot = Go2Wrapper(robot_info, self.controller_func)
+            self.robot = Go2Wrapper(robot_info)
         
-        self.planner.set_robot(self.robot)
+        self.planner = LLMPlanner(self.robot)
 
         # self.s1_loop_thread = threading.Thread(target=self.s1_loop)
         # self.s1_loop_thread.start()
@@ -85,21 +78,6 @@ class LLMController():
                 print_t(f"[C] Received voice command: {command}")
                 self.put_instruction(command)
             time.sleep(0.1)
-
-    def user_log(self, content: str | Image.Image) -> bool:
-        if isinstance(content, Image.Image):
-            buffer = io.BytesIO()
-            content.save(buffer, format="JPEG")
-            self._send_message(f'<img src="data:image/jpeg;base64,{base64.b64encode(buffer.getvalue()).decode("utf-8")}" />')
-        else:
-            text = content.strip('\'')
-            self._send_message(f'[LOG] {text}')
-            print_t(f'[LOG] {text}')
-        return True
-
-    def _send_message(self, message: str):
-        if self.message_queue is not None:
-            self.message_queue.put(message)
 
     def start_controller(self):
         self.running = True

@@ -15,6 +15,7 @@ from threading import Thread
 from typego.robot_info import RobotInfo
 from typego.utils import print_t
 from typego.llm_controller import LLMController
+from typego.frontend_message import try_get
 
 CURRENT_DIR = get_package_share_directory('typego')
 
@@ -37,8 +38,7 @@ def generate_povs():
 
 class TypeGo:
     def __init__(self, robot_info: RobotInfo):
-        self.message_queue = queue.Queue()
-        self.llm_controller = LLMController(robot_info, self.message_queue)
+        self.llm_controller = LLMController(robot_info)
         self.running = True
 
         self.ui = gr.Blocks(title="TypeGo")
@@ -80,10 +80,9 @@ class TypeGo:
 
             # Now stream messages from the queue as they arrive
             while True:
-                try:
-                    msg = self.message_queue.get(timeout=0.5)
-                except queue.Empty:
-                    break  # stop when no new messages for a while
+                msg = try_get(timeout=1.0)
+                if msg == None:
+                    break
 
                 # Yield new assistant messages one by one
                 print_t(f"[UI] New message: {msg}")

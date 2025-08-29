@@ -4,7 +4,7 @@ from typego.llm_wrapper import LLMWrapper, ModelType
 from typego.utils import print_t
 from typego.robot_wrapper import RobotWrapper
 from typego.s2 import S2Plan
-from typego.yolo_client import ObjectInfoEncoder
+from typego.yolo_client import ObservationEncoder
 
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
@@ -12,9 +12,10 @@ CURRENT_DIR = get_package_share_directory('typego')
 CHAT_LOG_DIR = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/"
 
 class LLMPlanner():
-    def __init__(self, model_type: ModelType = ModelType.GPT4O):
+    def __init__(self, robot: RobotWrapper, model_type: ModelType = ModelType.GPT4O):
         self.llm = LLMWrapper()
         self.model_type = model_type
+        self.robot = robot
 
         S2Plan.init_default()
 
@@ -28,14 +29,11 @@ class LLMPlanner():
         self.s2_prompt = open(os.path.join(CURRENT_DIR, f"./resource/s2_prompt.txt"), "r").read()
         self.s2_user_guidelines = open(os.path.join(CURRENT_DIR, f"./resource/s2_user_guidelines.txt"), "r").read()
         self.s2_examples = open(os.path.join(CURRENT_DIR, f"./resource/s2_examples.txt"), "r").read()
-    
-    def set_robot(self, robot: RobotWrapper):
-        self.robot = robot
 
     def s0_plan(self, inst) -> str:
         prompt = self.s0_prompt.format(example_plans=self.s0_examples,
                                         user_instruction=inst,
-                                        observation=json.dumps(self.robot.observation.obs(), cls=ObjectInfoEncoder, indent=2))
+                                        observation=json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2))
 
         ret = self.llm.request(prompt, ModelType.LOCAL_1B).split('\n')[0].strip()
         with open(CHAT_LOG_DIR + "s0_log.txt", "a") as f:
