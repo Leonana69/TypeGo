@@ -2,6 +2,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 import time, json
 
+from typego.llm_wrapper import LLMWrapper
+from typego.skill_item import SkillRegistry
+
 # ------------------------------
 # Method spec + frames
 # ------------------------------
@@ -15,7 +18,7 @@ class MethodSpec:
     termination: list[str]           # Python exprs over ctx {obs, goal, memory, state}
     submethods: dict[str, "MethodSpec"] = field(default_factory=dict)  # name -> MethodSpec
     budgets: dict[str, Any] = field(default_factory=lambda: {
-        "max_steps": 200, "max_secs": 30.0, "max_tokens_step": 128
+        "max_steps": 200, "max_secs": 30.0
     })
     policy_hints: list[str] = field(default_factory=list)
 
@@ -76,9 +79,9 @@ class MethodEngine:
     - Runs a call-stack of Frames, so sub-methods compose naturally.
     - Observations are requested per current frame via `observe_fn(obs_keys)`.
     """
-    def __init__(self, llm, skills, prompt_fn=default_prompt, validate_fn=default_validate_json_call):
-        self.llm = llm                  # must provide .complete(prompt, max_tokens=...)
-        self.skills = skills            # must provide .exec(name, **kwargs) -> {"ok": bool, "data":..., "error":...}
+    def __init__(self, skill_registry: SkillRegistry, prompt_fn=default_prompt, validate_fn=default_validate_json_call):
+        self.llm = LLMWrapper()
+        self.registry = skill_registry
         self.prompt_fn = prompt_fn
         self.validate_fn = validate_fn
 
@@ -130,7 +133,7 @@ class MethodEngine:
 
             # Ask LLM what to do next (skills or sub-methods)
             prompt = self.prompt_fn(fr.spec, obs, {**state, **fr.memory})
-            raw = self.llm.complete(prompt, max_tokens=fr.spec.budgets["max_tokens_step"])
+            raw = self.llm.request(prompt)
             call = self.validate_fn(raw, allowed_calls=fr.spec.api)
 
             if not call:
@@ -150,8 +153,8 @@ class MethodEngine:
                 trace.append({
                     "event": "submethod_enter", "parent": fr.name, "call": symbol, "goal": child_spec.goal, "raw": raw
                 })
-            elif symbol in self.skills.names():  # your Skills wrapper should expose available names
-                result = self.skills.exec(symbol, **args)
+            elif symbol in self.registry.names():  # your Skills wrapper should expose available names
+                result = self.registry.exec(symbol, **args)
                 # Simple example side-effect: count successful photos
                 if symbol == "take_picture" and result.get("ok"):
                     state["photos"] = state.get("photos", 0) + 1

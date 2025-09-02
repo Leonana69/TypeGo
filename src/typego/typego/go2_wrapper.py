@@ -27,7 +27,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture, robot_skill
 from typego.robot_info import RobotInfo
 from typego.yolo_client import YoloClient
-from typego.utils import quaternion_to_rpy, print_t, ImageRecover
+from typego.utils import print_t, ImageRecover
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
 
@@ -352,13 +352,10 @@ def go2action(feature_str: str = None):
                 self.stop_action_event.clear()
 
             print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
-            if "require_standing" in features:
-                if self.observation.posture == RobotPosture.LYING:
+            if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
                     self._go2_command("stand_up")
 
-            if "trigger_movement" in features:
-                self.observation.posture = RobotPosture.MOVING
-
+            self.observation.posture = RobotPosture.MOVING
             try:
                 print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 result = func(self, *args, **kwargs)
@@ -366,8 +363,7 @@ def go2action(feature_str: str = None):
                 print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
                 self.action_lock.release()
 
-            if "trigger_movement" in features:
-                self.observation.posture = RobotPosture.STANDING
+            self.observation.posture = RobotPosture.STANDING
             return result
         
         return wrapper
@@ -428,10 +424,6 @@ class Go2Wrapper(RobotWrapper):
         #         "description": "Move to object $1 in the view (orienting then go forward)"
         #     }
         # ]
-
-        # self.hl_skillset = SkillSet(SkillSetLevel.HIGH, self.ll_skillset)
-        # for skill in high_level_skills:
-        #     self.hl_skillset.add_high_level_skill(skill['name'], skill['definition'], skill['description'])
 
         self.function_queue = queue.Queue()
         self.function_thread = threading.Thread(target=self.worker)
@@ -573,14 +565,17 @@ class Go2Wrapper(RobotWrapper):
                 continue
 
     @robot_skill("stand_up", description="Make the robot stand up.")
+    @go2action("sit_stand")
     def stand_up(self):
         self._go2_command("stand_up")
 
     @robot_skill("sit_down", description="Make the robot sit down.")
+    @go2action("sit_stand")
     def sit_down(self):
         self._go2_command("stand_down")
 
     @robot_skill("orienting", description="Orient the robot's head to an object.")
+    @go2action
     def orienting(self, object: str) -> bool:
         for _ in range(2):
             info = self.get_obj_info(object)
@@ -592,7 +587,7 @@ class Go2Wrapper(RobotWrapper):
             self.rotate((0.5 - info.x) * 80)
 
     @robot_skill("look_object", description="Look at a specific object")
-    @go2action("require_standing")
+    @go2action
     def look_object(self, object: str) -> bool:
         body_pitch = self.observation.orientation[1]
         body_yaw = 0.0
@@ -665,32 +660,32 @@ class Go2Wrapper(RobotWrapper):
         self._go2_command("stop")
         return True
     
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def move_forward(self, distance: float) -> bool:
         return self._move(distance, 0.0)
     
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def move_back(self, distance: float) -> bool:
         return self._move(-distance, 0.0)
     
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def move_left(self, distance: float) -> bool:
         return self._move(0.0, distance)
     
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def move_right(self, distance: float) -> bool:
         return self._move(0.0, -distance)
 
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def turn_left(self, deg: float) -> bool:
         return self._rotate(deg)
 
-    @go2action("require_standing, trigger_movement")
+    @go2action
     @overrides
     def turn_right(self, deg: float) -> bool:
         return self._rotate(-deg)
@@ -832,7 +827,7 @@ class Go2Wrapper(RobotWrapper):
         return True
     
     @robot_skill("nod", description="Nod the robot's head.")
-    @go2action("require_standing")
+    @go2action
     def nod(self) -> bool:
         """
         Nods the robot's head.
@@ -848,7 +843,7 @@ class Go2Wrapper(RobotWrapper):
         return True
     
     @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")
-    @go2action("require_standing")
+    @go2action
     def look_up(self) -> bool:
         """
         Looks up by adjusting the robot's head pitch.
@@ -864,7 +859,7 @@ class Go2Wrapper(RobotWrapper):
         return True
     
     @robot_skill("goto_waypoint", description="Go to a specific waypoint")
-    @go2action("require_standing, trigger_movement")
+    @go2action
     def goto_waypoint(self, id: int) -> bool:
         print(f"-> Go to waypoint {id}")
         wp = self.observation.slam_map.get_waypoint(id)

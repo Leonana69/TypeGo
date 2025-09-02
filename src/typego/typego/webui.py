@@ -5,7 +5,6 @@ from ament_index_python.packages import get_package_share_directory
 import sys
 print(sys.executable)
 
-import queue
 import os, sys
 import io, time, json
 import gradio as gr

@@ -1,9 +1,10 @@
 from abc import ABC
 import re
-from typing import Any, Optional
+from typing import Any, Optional, TypeAlias
+from typego.utils import *
 
-SKILL_ARG_TYPE = int | float | str
-SKILL_RET_TYPE = Optional[int | float | bool | str]
+SKILL_ARG_TYPE: TypeAlias = int | float | str
+SKILL_RET_TYPE: TypeAlias = Optional[int | float | bool | str]
 
 class SkillRegistry:
     def __init__(self):
@@ -19,8 +20,16 @@ class SkillRegistry:
             return fn
         return deco
 
-    def get_skill_list(self) -> list[str]:
-        """Returns a list of all registered skill names."""
+    def get_skill_list(self, keys: list[str]=[]) -> list[str]:
+        """Returns a list of target registered skills in string format."""
+        if keys:
+            l = []
+            for key in keys:
+                if key in self._items:
+                    l.append(str(self._items[key]))
+                else:
+                    log_error(f"Skill '{key}' not found in registry.")
+            return l
         return [str(item) for item in self._items.values()]
 
     def execute(
@@ -80,8 +89,8 @@ class SkillItem(ABC):
         """Parses the string of arguments and converts them to the expected types."""
         # Check the number of arguments
         if len(args_str_list) != len(self.args):
-            raise ValueError(f"Func {self.name} expected {len(self.args)} arguments, but got {len(args_str_list)}.")
-        
+            log_error(f"Func {self.name} expected {len(self.args)} arguments, but got {len(args_str_list)}.", raise_error=True)
+
         parsed_args = []
         for i, arg in enumerate(args_str_list):
             # if arg is not a string, skip parsing
@@ -98,5 +107,5 @@ class SkillItem(ABC):
                 else:
                     parsed_args.append(self.args[i].arg_type(arg.strip()))
             except ValueError as e:
-                raise ValueError(f"Error parsing argument {i + 1}. Expected type {self._args[i].arg_type.__name__}, but got value '{arg.strip()}'. Original error: {e}")
+                log_error(f"Error parsing argument {i + 1}. Expected type {self._args[i].arg_type.__name__}, but got value '{arg.strip()}'. Original error: {e}", raise_error=True)
         return parsed_args

@@ -3,12 +3,25 @@ import numpy as np
 from numpy import ndarray
 from typego.skill_item import SKILL_RET_TYPE
 from typing import Optional
+import logging
 
-def get_current_time() -> str:
-    """
-    Get the current time in the format HH:MM:SS
-    """
-    return datetime.datetime.now().strftime('%H:%M:%S')
+logging.basicConfig(
+    filename='typego.log',
+    filemode='a',  # 'a' for append, 'w' for overwrite
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def log_info(*args):
+    logging.info(*args)
+
+def log_warning(*args):
+    logging.warning(*args)
+
+def log_error(*args, raise_error=False):
+    if raise_error:
+        raise ValueError(*args)
+    logging.error(*args)
 
 def print_t(*args, **kwargs):
     # Get the current timestamp
@@ -17,7 +30,7 @@ def print_t(*args, **kwargs):
     # Use built-in print to display the timestamp followed by the message
     print(f"[{current_time}]", *args, **kwargs)
 
-def input_t(literal):
+def input_t(literal: str) -> str:
     # Get the current timestamp
     current_time = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
     
@@ -59,28 +72,28 @@ def evaluate_value(s: str) -> SKILL_RET_TYPE:
     # Return original string if no conversion applies
     return s
 
-def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
-    """
-    Convert quaternion (qx, qy, qz, qw) to roll, pitch, and yaw (RPY) angles in radians.
-    """
-    # Roll (x-axis rotation)
-    sinr_cosp = 2 * (qw * qx + qy * qz)
-    cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
+# def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
+#     """
+#     Convert quaternion (qx, qy, qz, qw) to roll, pitch, and yaw (RPY) angles in radians.
+#     """
+#     # Roll (x-axis rotation)
+#     sinr_cosp = 2 * (qw * qx + qy * qz)
+#     cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
+#     roll = np.arctan2(sinr_cosp, cosr_cosp)
 
-    # Pitch (y-axis rotation)
-    sinp = 2 * (qw * qy - qz * qx)
-    if abs(sinp) >= 1:
-        pitch = np.sign(sinp) * (np.pi / 2)  # Use 90 degrees if out of range
-    else:
-        pitch = np.arcsin(sinp)
+#     # Pitch (y-axis rotation)
+#     sinp = 2 * (qw * qy - qz * qx)
+#     if abs(sinp) >= 1:
+#         pitch = np.sign(sinp) * (np.pi / 2)  # Use 90 degrees if out of range
+#     else:
+#         pitch = np.arcsin(sinp)
 
-    # Yaw (z-axis rotation)
-    siny_cosp = 2 * (qw * qz + qx * qy)
-    cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
-    yaw = np.arctan2(siny_cosp, cosy_cosp)
+#     # Yaw (z-axis rotation)
+#     siny_cosp = 2 * (qw * qz + qx * qy)
+#     cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
+#     yaw = np.arctan2(siny_cosp, cosy_cosp)
 
-    return np.array([roll, pitch, yaw])
+#     return np.array([roll, pitch, yaw])
 
 class ImageRecover:
     def __init__(self, K: ndarray, D: ndarray):
