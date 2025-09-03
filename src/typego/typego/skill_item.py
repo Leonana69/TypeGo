@@ -20,6 +20,9 @@ class SkillRegistry:
             return fn
         return deco
 
+    def names(self) -> list[str]:
+        return list(self._items.keys())
+
     def get_skill_list(self, keys: list[str]=[]) -> list[str]:
         """Returns a list of target registered skills in string format."""
         if keys:
@@ -34,16 +37,23 @@ class SkillRegistry:
 
     def execute(
         self,
-        func_call: str
+        func_call: str,
+        args: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Execute a registered skill by name with typed args."""
-        # Parse the function call
-        match = re.match(r"(\w+)\((.*)\)", func_call)
-        if not match:
-            return {"ok": False, "error": f"invalid function call '{func_call}'"}
+        if not args:
+            # Parse the function call
+            match = re.match(r"(\w+)\((.*)\)", func_call)
+            if not match:
+                return {"ok": False, "error": f"invalid function call '{func_call}'"}
 
-        name = match.group(1)
-        arg_list = [arg.strip() for arg in match.group(2).split(",") if arg.strip()]
+            name = match.group(1)
+            arg_list = [arg.strip() for arg in match.group(2).split(",") if arg.strip()]
+        else:
+            name = func_call
+            arg_list = list(args.values())
+
+        print(f"[SkillRegistry] Executing skill '{name}' with args {arg_list}")
 
         item = self._items.get(name)
         if not item:

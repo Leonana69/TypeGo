@@ -67,17 +67,16 @@ class Go2Observation(RobotObservation):
         )
 
         # Subscribe to /tf
-        tf_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=100,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
         node.create_subscription(
             TFMessage,
             '/tf',
             self._tf_callback,
-            tf_qos
+            QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=100,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            )
         )
 
         # Subscribe to /map
@@ -330,11 +329,66 @@ class Go2StateEncoder(json.JSONEncoder):
             return obj.value
         return super().default(obj)
 
-def go2action(feature_str: str = None):
+def go2action(feature_str = None):
     """
     Decorator to mark a function as an action that can be executed.
     This will create a Go2Action instance and execute it.
+    
+    Usage:
+        @go2action("feature1,feature2")  # With features
+        def my_action(self):
+            pass
+            
+        @go2action  # Without features (no parentheses)
+        def my_action(self):
+            pass
+            
+        @go2action()  # Without features (with parentheses)
+        def my_action(self):
+            pass
     """
+    
+    # Handle the case where go2action is used without parentheses
+    if callable(feature_str):
+        # feature_str is actually the function being decorated
+        func = feature_str
+        features = []
+        
+        @wraps(func)
+        def wrapper(self: "Go2Wrapper", *args, **kwargs):
+            print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
+            if not self.action_lock.acquire(timeout=0.1):
+                self.stop_action()
+                self.stop_action_event.set()
+                while not self.action_lock.acquire(timeout=0.1):
+                    if not self.running:
+                        return
+                self.stop_action_event.clear()
+            else:
+                self.stop_action_event.clear()
+
+            print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
+            if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
+                self._go2_command("stand_up")
+
+            self.observation.posture = RobotPosture.MOVING
+            try:
+                print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
+                result = func(self, *args, **kwargs)
+            finally:
+                print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
+                self.action_lock.release()
+
+            self.observation.posture = RobotPosture.STANDING
+            return result
+        
+        return wrapper
+    
+    # Handle the case where go2action is used with parentheses but no arguments
+    if feature_str is None:
+        feature_str = ""
+    
+    # Normal case with parentheses and arguments
     def decorator(func):
         features = [f.strip() for f in feature_str.split(",")] if feature_str else []
         
@@ -353,7 +407,7 @@ def go2action(feature_str: str = None):
 
             print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
-                    self._go2_command("stand_up")
+                self._go2_command("stand_up")
 
             self.observation.posture = RobotPosture.MOVING
             try:
@@ -367,6 +421,7 @@ def go2action(feature_str: str = None):
             return result
         
         return wrapper
+    
     return decorator
 
 class Go2Wrapper(RobotWrapper):
@@ -541,8 +596,11 @@ class Go2Wrapper(RobotWrapper):
             try:
                 control = self.command_queue.get(timeout=0.05)
             except queue.Empty:
-                if control["command"] != "euler":
-                    control = {"command": "stop"}
+                # if control["command"] != "euler":
+                #     control = {"command": "stop"}
+
+                # keep both euler and linear velocity
+                pass
 
             if control["command"] == "euler":
                 # Convert to radians and update current_euler
@@ -556,6 +614,10 @@ class Go2Wrapper(RobotWrapper):
                     send_request({"command": "euler", "roll": 0.0, "pitch": 0.0, "yaw": 0.0})
                 except requests.RequestException as e:
                     pass
+
+            if control["command"] == "nav" and control.get("vx", 0.0) == 0.0 and control.get("vy", 0.0) == 0.0 and control.get("vyaw", 0.0) == 0.0:
+                control = {"command": "stop"}
+
             try:
                 result = send_request(control)
                 if result.status_code != 200:
@@ -577,14 +639,14 @@ class Go2Wrapper(RobotWrapper):
     @robot_skill("orienting", description="Orient the robot's head to an object.")
     @go2action
     def orienting(self, object: str) -> bool:
-        for _ in range(2):
+        for _ in range(1):
             info = self.get_obj_info(object)
             if info is None:
                 return False
             if (info.x - 0.5) < 0.1:
                 return True
             
-            self.rotate((0.5 - info.x) * 80)
+            self._rotate((0.5 - info.x) * 80)
 
     @robot_skill("look_object", description="Look at a specific object")
     @go2action
@@ -663,31 +725,43 @@ class Go2Wrapper(RobotWrapper):
     @go2action
     @overrides
     def move_forward(self, distance: float) -> bool:
+        print_t(f"[Go2] Moving forward {distance} meters")
         return self._move(distance, 0.0)
     
     @go2action
     @overrides
     def move_back(self, distance: float) -> bool:
+        print_t(f"[Go2] Moving back {distance} meters")
         return self._move(-distance, 0.0)
     
+    @robot_skill("nav", description="Continous movement and rotation with speed. Max speed +-1m/s, max turning +-0.5 rad/s. Positive value to move forward and clockwise/turn left.")
+    @go2action
+    def nav(self, vx: float, vyaw: float) -> bool:
+        print_t(f"[Go2] Nav with speed {vx} m/s and yaw {vyaw} rad/s")
+        return self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
+
     @go2action
     @overrides
     def move_left(self, distance: float) -> bool:
+        print_t(f"[Go2] Moving left {distance} meters")
         return self._move(0.0, distance)
     
     @go2action
     @overrides
     def move_right(self, distance: float) -> bool:
+        print_t(f"[Go2] Moving right {distance} meters")
         return self._move(0.0, -distance)
 
     @go2action
     @overrides
     def turn_left(self, deg: float) -> bool:
+        print_t(f"[Go2] Turning left {deg} degrees")
         return self._rotate(deg)
 
     @go2action
     @overrides
     def turn_right(self, deg: float) -> bool:
+        print_t(f"[Go2] Turning right {deg} degrees")
         return self._rotate(-deg)
 
     ########################################################
@@ -824,6 +898,7 @@ class Go2Wrapper(RobotWrapper):
 
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
         self._go2_command("stop")
+        time.sleep(0.8)
         return True
     
     @robot_skill("nod", description="Nod the robot's head.")

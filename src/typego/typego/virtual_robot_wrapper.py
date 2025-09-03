@@ -4,10 +4,11 @@ from PIL import Image
 from overrides import overrides
 import json
 
-from typego.robot_wrapper import RobotWrapper, RobotObservation
+from typego.robot_wrapper import RobotWrapper, RobotObservation, robot_skill
 from typego.yolo_client import YoloClient
 from typego.robot_info import RobotInfo
 from typego.robot_wrapper import RobotPosture
+from typego.method import make_find_object_method
 
 SKILL_EXECUTION_TIME = 2
 
@@ -27,6 +28,7 @@ class VirtualObservation(RobotObservation):
                 raise RuntimeError("Failed to open GStreamer pipeline")
             while not self._stop_evt.is_set():
                 ret, frame = self.cap.read()
+                print("Captured frame: ", ret)
                 if not ret:
                     continue
                 # Convert the frame to RGB and store it in self._image
@@ -57,7 +59,11 @@ class VirtualObservation(RobotObservation):
     @overrides
     def obs(self) -> dict:
         return {
-            "posture": self.posture
+            "t": time.strftime("%H:%M:%S", time.localtime(time.time())),
+            "robot": {
+                "posture": self.posture.name.lower(),
+            },
+            "perception": self.yolo_client.latest_result[1] if self.yolo_client.latest_result else [],
         }
 
 class VirtualRobotWrapper(RobotWrapper):
@@ -67,6 +73,7 @@ class VirtualRobotWrapper(RobotWrapper):
     @overrides
     def start(self) -> bool:
         self.observation.start()
+        self.observation.posture = RobotPosture.STANDING
         return True
 
     @overrides
@@ -106,5 +113,11 @@ class VirtualRobotWrapper(RobotWrapper):
     @overrides
     def turn_right(self, deg: float) -> bool:
         print(f"-> Turn right by {deg} degrees")
+        time.sleep(SKILL_EXECUTION_TIME)
+        return True
+    
+    @robot_skill("orienting", description="Orient the robot's head to an object.")
+    def orienting(self, object: str) -> bool:
+        print(f"-> Orienting head to {object}")
         time.sleep(SKILL_EXECUTION_TIME)
         return True

@@ -6,6 +6,7 @@ import json, os, time
 from json import JSONEncoder
 import asyncio, aiohttp, threading
 import numpy as np
+from typing import Any, Optional
 
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
@@ -20,57 +21,77 @@ EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
 FONT = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)
 
 class ObjectInfo:
-    def __init__(self, name: str, x, y, w, h, depth=None):
+    def __init__(self, name: str, x, y, w, h, depth: Optional[float] = None):
         self.name: str = name
         self.x: float = float(x)
         self.y: float = float(y)
         self.w: float = float(w)
         self.h: float = float(h)
-        self.depth: float = float(depth) if depth is not None else None
+        self.depth: Optional[float] = float(depth) if depth is not None else None
 
-    @classmethod
-    def from_json(cls, json_data: dict):
-        return cls(
-            json_data['name'], 
-            json_data['x'], 
-            json_data['y'], 
-            json_data['w'], 
-            json_data['h'], 
-            json_data.get('depth')  # Use get() to handle missing key gracefully
-        )
-
-    def __repr__(self) -> str:
+    # -------- JSON support --------
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-serializable dict."""
         base_info = {
             "name": self.name,
             "x": round(self.x, 2),
             "y": round(self.y, 2),
-            "size": [round(self.w, 2), round(self.h, 2)]
+            "w": round(self.w, 2),
+            "h": round(self.h, 2),
         }
-
         if self.depth is not None:
             base_info["dist"] = round(self.depth, 2)
-
-        return json.dumps(base_info)
-    
-    def to_json_format(self):
-        """Returns the same format as __repr__ but as a dict instead of string"""
-        base_info = {
-            "name": self.name,
-            "x": round(self.x, 2),
-            "y": round(self.y, 2),
-            "size": [round(self.w, 2), round(self.h, 2)]
-        }
-
-        if self.depth is not None:
-            base_info["dist"] = round(self.depth, 2)
-
         return base_info
+
+    def to_json(self) -> str:
+        """Return JSON string."""
+        return json.dumps(self.to_dict())
+
+    # -------- Python builtins --------
+    def __repr__(self) -> str:
+        return f"ObjectInfo({self.to_dict()})"
+
+    def __getitem__(self, key: str | int):
+        if isinstance(key, int):  # index-style
+            mapping = [self.name, self.x, self.y, self.w, self.h, self.depth]
+            return mapping[key]
+        elif isinstance(key, str):  # dict-like
+            if key == "size":
+                return [self.w, self.h]
+            if key == "dist":
+                return self.depth
+            if hasattr(self, key):
+                return getattr(self, key)
+            raise KeyError(key)
+        else:
+            raise TypeError("Key must be str or int")
+
+    def __setitem__(self, key: str | int, value):
+        if isinstance(key, int):
+            attrs = ["name", "x", "y", "w", "h", "depth"]
+            setattr(self, attrs[key], value)
+        elif isinstance(key, str):
+            if key in {"size", "dist"}:
+                raise KeyError(f"{key} is derived and cannot be directly set.")
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                raise KeyError(key)
+        else:
+            raise TypeError("Key must be str or int")
+
+    def get(self, key: str, default=None):
+        """Dict-like get method."""
+        try:
+            return self[key]
+        except (KeyError, TypeError, IndexError):
+            return default
     
 class ObservationEncoder(JSONEncoder):
     """Custom JSON encoder for ObjectInfo class"""
     def default(self, obj):
         if isinstance(obj, ObjectInfo):
-            return obj.to_json_format()
+            return obj.to_dict()
         elif isinstance(obj, (np.float32, np.float64, float)):
             return round(float(obj), 2)
         elif isinstance(obj, (np.int32, np.int64)):
@@ -87,7 +108,7 @@ class YoloClient():
         self.robot_info = robot_info
         self.service_url = 'http://{}:{}/process'.format(EDGE_SERVICE_IP, EDGE_SERVICE_PORT)
         self.target_image_size = (640, 360)
-        self._latest_result_lock = threading.Lock()
+        self._latest_result_lock = asyncio.Lock()
         self._latest_result = None
         self.frame_id = 0
         self.frame_id_lock = asyncio.Lock()
@@ -95,7 +116,12 @@ class YoloClient():
 
     @property
     def latest_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
-        return self._latest_result
+        result = self._latest_result
+        if result is None:
+            return None
+        image, objects = result
+        # shallow copy of list to decouple from async updates
+        return (image, list(objects))
 
     @staticmethod
     def image_to_bytes(image: Image.Image) -> bytes:
@@ -139,14 +165,14 @@ class YoloClient():
     @staticmethod
     def cc_to_ps(result: list) -> list[ObjectInfo]:
         return [
-            ObjectInfo.from_json({
-                'name': obj['name'],
-                'x': (obj['box']['x1'] + obj['box']['x2']) / 2,
-                'y': (obj['box']['y1'] + obj['box']['y2']) / 2,
-                'w': obj['box']['x2'] - obj['box']['x1'],
-                'h': obj['box']['y2'] - obj['box']['y1'],
-                'depth': obj['depth'] if 'depth' in obj else None
-            })
+            ObjectInfo(
+                name=obj['name'],
+                x=(obj['box']['x1'] + obj['box']['x2']) / 2,
+                y=(obj['box']['y1'] + obj['box']['y2']) / 2,
+                w=obj['box']['x2'] - obj['box']['x1'],
+                h=obj['box']['y2'] - obj['box']['y1'],
+                depth=obj['depth'] if 'depth' in obj else None
+            )
             for obj in result
         ]
 
@@ -174,7 +200,7 @@ class YoloClient():
             'conf': conf
         }
         image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
-        
+
         async with self.frame_id_lock:
             self.frame_id += 1
             config['image_id'] = self.frame_id
@@ -197,6 +223,6 @@ class YoloClient():
         if 'image_id' not in json_results:
             print_t(f"[Y] Missing image_id in results: {json_results}")
             return
-            
-        with self._latest_result_lock:
+        
+        async with self._latest_result_lock:
             self._latest_result = (image, self.cc_to_ps(json_results["result"]))

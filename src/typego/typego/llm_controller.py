@@ -11,6 +11,7 @@ from typego.llm_planner import LLMPlanner
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
 from typego.s2 import S2Plan
+from typego.method import MethodEngine, make_find_object_method, make_follow_object_method
 
 class S0Event:
     def __init__(self, description: str, condition: callable, action: callable, priority: int = 0, timeout: float = 3.0):
@@ -65,8 +66,8 @@ class LLMController():
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s0_loop_thread.start()
 
-        self.vc_thread = threading.Thread(target=self.check_voice_command_thread)
-        self.vc_thread.start()
+        # self.vc_thread = threading.Thread(target=self.check_voice_command_thread)
+        # self.vc_thread.start()
 
     def check_voice_command_thread(self):
         while not self.running:
@@ -82,7 +83,7 @@ class LLMController():
     def start_controller(self):
         self.running = True
         self.robot.start()
-        
+
     def stop_controller(self):
         self.running = False
         self.robot.stop()
@@ -154,9 +155,16 @@ class LLMController():
 
             print_t(f"[S0] Get plan: {plan}")
 
+            find_object_method = make_follow_object_method(self.robot)
+            find_person = find_object_method.bind(object="person")
+            print(find_person.goal)
+            method_engine = MethodEngine(find_person)
+            result = method_engine.run()
+            print(f"[S0] Method result: {result}")
+            self.robot.registry.execute("nav(0.0, 0.0)")
             # use S2Plan.default to handle a new task
-            S2Plan.set_default()
-            self.robot.append_actions(plan)
+            # S2Plan.set_default()
+            # self.robot.append_actions(plan)
             self.s0_s1_event.set()
 
     # def s0_event_executor(self, event_queue: queue.Queue[S0Event]):
