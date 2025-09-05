@@ -740,6 +740,48 @@ class Go2Wrapper(RobotWrapper):
         print_t(f"[Go2] Nav with speed {vx} m/s and yaw {vyaw} rad/s")
         return self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
 
+    @robot_skill("search", description="Rotate to find a specific object when it's not in current view.")
+    @go2action
+    def search(self, object: str) -> bool:
+        print_t(f"[Go2] Searching for {object}")
+        for _ in range(12):
+            if self.stop_action_event.is_set():
+                return False
+            if self.get_obj_info(object) is not None:
+                return True
+            self._rotate(30)
+        return False
+    
+    @robot_skill("follow", description="Follow a specific object.")
+    @go2action
+    def follow(self, object: str) -> bool:
+        print_t(f"[Go2] Following {object}")
+        last_seen_cx = 0.5
+        while not self.stop_action_event.is_set():
+            info = self.get_obj_info(object)
+            if info is not None:
+                last_seen_cx = info.cx
+                if abs(last_seen_cx - 0.5) < 0.1:
+                    vayw = 0.0
+                else:
+                    vyaw = (0.5 - last_seen_cx) * 2.0
+                    
+                if info.depth > 1.5:
+                    vx = min(1.0, info.depth / 3.0)
+                elif info.depth < 0.8:
+                    vx = -0.5
+                else:
+                    vx = 0.0
+                self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
+            else:
+                if last_seen_cx - 0.5 < 0.0:
+                    self._rotate(30)
+                else:
+                    self._rotate(-30)
+            time.sleep(0.1)
+        self._go2_command("stop")
+        return False
+
     @go2action
     @overrides
     def move_left(self, distance: float) -> bool:

@@ -156,7 +156,7 @@ class LLMController():
             print_t(f"[S0] Get plan: {plan}")
 
             find_object_method = make_follow_object_method(self.robot)
-            find_person = find_object_method.bind(object="person")
+            find_person = find_object_method.bind(object="sports ball")
             print(find_person.goal)
             method_engine = MethodEngine(find_person)
             result = method_engine.run()

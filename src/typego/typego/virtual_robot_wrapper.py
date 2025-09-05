@@ -28,7 +28,6 @@ class VirtualObservation(RobotObservation):
                 raise RuntimeError("Failed to open GStreamer pipeline")
             while not self._stop_evt.is_set():
                 ret, frame = self.cap.read()
-                print("Captured frame: ", ret)
                 if not ret:
                     continue
                 # Convert the frame to RGB and store it in self._image

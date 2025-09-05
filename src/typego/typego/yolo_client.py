@@ -21,12 +21,12 @@ EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
 FONT = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)
 
 class ObjectInfo:
-    def __init__(self, name: str, x, y, w, h, depth: Optional[float] = None):
+    def __init__(self, name: str, center_x, center_y, width, height, depth: Optional[float] = None):
         self.name: str = name
-        self.x: float = float(x)
-        self.y: float = float(y)
-        self.w: float = float(w)
-        self.h: float = float(h)
+        self.cx: float = float(center_x)
+        self.cy: float = float(center_y)
+        self.w: float = float(width)
+        self.h: float = float(height)
         self.depth: Optional[float] = float(depth) if depth is not None else None
 
     # -------- JSON support --------
@@ -34,10 +34,7 @@ class ObjectInfo:
         """Return JSON-serializable dict."""
         base_info = {
             "name": self.name,
-            "x": round(self.x, 2),
-            "y": round(self.y, 2),
-            "w": round(self.w, 2),
-            "h": round(self.h, 2),
+            "bbox": [round(self.cx, 2), round(self.cy, 2), round(self.w, 2), round(self.h, 2)],
         }
         if self.depth is not None:
             base_info["dist"] = round(self.depth, 2)
@@ -53,9 +50,11 @@ class ObjectInfo:
 
     def __getitem__(self, key: str | int):
         if isinstance(key, int):  # index-style
-            mapping = [self.name, self.x, self.y, self.w, self.h, self.depth]
+            mapping = [self.name, self.cx, self.cy, self.w, self.h, self.depth]
             return mapping[key]
         elif isinstance(key, str):  # dict-like
+            if key == "bbox":
+                return [self.cx, self.cy, self.w, self.h]
             if key == "size":
                 return [self.w, self.h]
             if key == "dist":
@@ -68,12 +67,16 @@ class ObjectInfo:
 
     def __setitem__(self, key: str | int, value):
         if isinstance(key, int):
-            attrs = ["name", "x", "y", "w", "h", "depth"]
+            attrs = ["name", "cx", "cy", "w", "h", "depth"]
             setattr(self, attrs[key], value)
         elif isinstance(key, str):
-            if key in {"size", "dist"}:
+            if key == "bbox":
+                if len(value) != 4:
+                    raise ValueError("bbox must be a list of 4 values [cx, cy, w, h]")
+                self.cx, self.cy, self.w, self.h = value
+            elif key in {"size", "dist", "bbox"}:
                 raise KeyError(f"{key} is derived and cannot be directly set.")
-            if hasattr(self, key):
+            elif hasattr(self, key):
                 setattr(self, key, value)
             else:
                 raise KeyError(key)
@@ -142,10 +145,10 @@ class YoloClient():
         w, h = image.size
 
         for obj in object_list:
-            x1 = str_float_to_int(obj.x - obj.w / 2, w)
-            y1 = str_float_to_int(obj.y - obj.h / 2, h)
-            x2 = str_float_to_int(obj.x + obj.w / 2, w)
-            y2 = str_float_to_int(obj.y + obj.h / 2, h)
+            x1 = str_float_to_int(obj.cx - obj.w / 2, w)
+            y1 = str_float_to_int(obj.cy - obj.h / 2, h)
+            x2 = str_float_to_int(obj.cx + obj.w / 2, w)
+            y2 = str_float_to_int(obj.cy + obj.h / 2, h)
 
             # Draw bounding box
             draw.rectangle([x1, y1, x2, y2], outline='#00FFFF', width=6)
@@ -167,10 +170,10 @@ class YoloClient():
         return [
             ObjectInfo(
                 name=obj['name'],
-                x=(obj['box']['x1'] + obj['box']['x2']) / 2,
-                y=(obj['box']['y1'] + obj['box']['y2']) / 2,
-                w=obj['box']['x2'] - obj['box']['x1'],
-                h=obj['box']['y2'] - obj['box']['y1'],
+                center_x=(obj['box']['x1'] + obj['box']['x2']) / 2,
+                center_y=(obj['box']['y1'] + obj['box']['y2']) / 2,
+                width=obj['box']['x2'] - obj['box']['x1'],
+                height=obj['box']['y2'] - obj['box']['y1'],
                 depth=obj['depth'] if 'depth' in obj else None
             )
             for obj in result

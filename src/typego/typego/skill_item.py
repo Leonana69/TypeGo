@@ -1,7 +1,7 @@
 from abc import ABC
 import re
 from typing import Any, Optional, TypeAlias
-from typego.utils import *
+from typego.utils import log_error
 
 SKILL_ARG_TYPE: TypeAlias = int | float | str
 SKILL_RET_TYPE: TypeAlias = Optional[int | float | bool | str]
@@ -119,3 +119,39 @@ class SkillItem(ABC):
             except ValueError as e:
                 log_error(f"Error parsing argument {i + 1}. Expected type {self._args[i].arg_type.__name__}, but got value '{arg.strip()}'. Original error: {e}", raise_error=True)
         return parsed_args
+    
+
+def evaluate_value(s: str) -> SKILL_RET_TYPE:
+    if not s:  # Empty string or None
+        return None
+    
+    # Strip whitespace once at the beginning
+    s_clean = s.strip()
+    
+    # Check for None
+    if s_clean == 'None':
+        return None
+    
+    # Check for boolean values
+    if s_clean == 'True':
+        return True
+    if s_clean == 'False':
+        return False
+    
+    # Check for numeric values
+    if s_clean.startswith(('-', '+')):
+        num_str = s_clean[1:]
+        sign = -1 if s_clean[0] == '-' else 1
+    else:
+        num_str = s_clean
+        sign = 1
+    
+    # Check if it's a valid number
+    if num_str.replace('.', '', 1).isdigit():
+        if '.' in num_str:
+            return sign * float(num_str)
+        else:
+            return sign * int(num_str)
+    
+    # Return original string if no conversion applies
+    return s

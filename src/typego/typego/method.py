@@ -25,6 +25,7 @@ class MethodSpec:
         "max_steps": 200, "max_secs": 30.0
     })
     policy_hints: list[str] = field(default_factory=list)
+    logic: str | None = None
 
     def bind(self, **goal_overrides) -> "MethodSpec":
         # shallow copy + goal override
@@ -49,14 +50,13 @@ def default_prompt(spec: MethodSpec, obs: dict[str, Any], state: dict[str, Any])
     skills = spec.robot.registry.get_skill_list(keys=spec.api)
     return (
         "# ROLE\n"
-        f"You are robot planner that executes a method called: {spec.name}\n\n"
-        f"You should generate the output based on the following context:"
+        f"You are robot planner that executes a method called: {spec.name}.\n\n"
         "# CONTEXT\n"
-        f"**Description:** {spec.description}\n"
-        f"**Goal:** {json.dumps(spec.goal)}\n"
-        f"**Observation:** {json.dumps(obs, cls=ObservationEncoder)}\n"
-        f"**State:** {json.dumps(state)}\n"
-        f"**Available robot skills:**\n{skills}\n\n"
+        f"Description: {spec.description}\n"
+        f"Goal: {json.dumps(spec.goal)}\n"
+        f"Observation: {json.dumps(obs, cls=ObservationEncoder)}\n"
+        f"State: {json.dumps(state)}\n"
+        f"Available robot skills:\n{skills}\n\n"
         f"# POLICY HINTS\n{spec.policy_hints}\n\n"
         "# OUTPUT\n"
         "Return a JSON object with keys {\"call\", \"args\"}. "
@@ -146,13 +146,23 @@ class MethodEngine:
                 else:
                     return {"status": "done", "trace": trace, "final_obs": obs, "state": state}
 
-            # Ask LLM what to do next (skills or sub-methods)
-            prompt = self.prompt_fn(fr.spec, obs, {**state, **fr.memory})
-            print_t(prompt)
-            raw = self.llm.request(prompt)
+            if fr.spec.logic:
+                # Execute custom logic if provided
+                local_ctx = {"obs": obs, "goal": fr.goal, "memory": fr.memory, "state": state}
+                try:
+                    safe_globals = {"__builtins__": {}}
+                    safe_globals.update(local_ctx)
+                    raw = eval(fr.spec.logic, safe_globals, {})
+                except Exception as e:
+                    print(f"[Method] Error executing logic: {e}")
+                    raw = None
+            else:
+                # Ask LLM what to do next (skills or sub-methods)
+                prompt = self.prompt_fn(fr.spec, obs, {**state, **fr.memory})
+                print_t(prompt)
+                raw = self.llm.request(prompt)
 
-            print_t(f"LLM raw: {raw}")
-
+            print_t(f"Decision raw: {raw}")
             call = self.validate_fn(raw, allowed_calls=fr.spec.api)
 
             if not call:
@@ -216,7 +226,7 @@ def make_find_object_method(robot: RobotWrapper) -> MethodSpec:
         ],
         termination=[
             # True when target object is found in perception list with sufficient confidence
-            "True in [d['name'] == goal['object'] and d.get('dist', 99.0) <= goal.get('max_dist') for d in obs.get('perception', [])]"
+            "True in [d['name'] == goal['object'] and d.get('dist', 0.0) <= goal.get('max_dist') for d in obs.get('perception')]"
         ],
         policy_hints=[
             "Use 'orienting' to align with the target object.",
@@ -225,24 +235,43 @@ def make_find_object_method(robot: RobotWrapper) -> MethodSpec:
         ]
     )
 
+# def make_follow_object_method(robot: RobotWrapper) -> MethodSpec:
+#     return MethodSpec(
+#         name="follow_object",
+#         description="Follow the target object until timeout.",
+#         robot=robot,
+#         goal={"object": "<name>", "max_dist": 1.5, "duration": 60.0},
+#         obs_keys=["t", "robot", "perception"],
+#         api=[  # skills only in this leaf method (you can add more)
+#             "nav", "search"
+#         ],
+#         termination=[
+#             # True when target object is found in perception list with sufficient confidence
+#             "obs.get('t') >= goal.get('duration')"
+#         ],
+#         policy_hints=[
+#             "Default to **`nav`** when the target is visible.",
+#             "Use `vyaw` in `nav` to rotate toward the target's horizontal offset: If the object is to the right, use **negative vyaw**. If the object is to the left, use **positive vyaw**. Adjust until the target is centered (x location is around 0.5).",
+#             "Use `vx` to maintain distance: Move forward if `dist > goal['max_dist']`. Stop or move backward if `dist <= goal['max_dist']`.",
+#             "If the target object is not in sight, use 'search'."
+#         ]
+#     )
+
 def make_follow_object_method(robot: RobotWrapper) -> MethodSpec:
     return MethodSpec(
         name="follow_object",
-        description="Follow the target object until it's no longer in view.",
+        description="Follow the target object until timeout.",
         robot=robot,
-        goal={"object": "<name>", "max_dist": 2.0, "duration": 30.0},
+        goal={"object": "<name>", "max_dist": 1.5, "duration": 60.0},
         obs_keys=["t", "robot", "perception"],
         api=[  # skills only in this leaf method (you can add more)
-            "nav", "turn_left", "turn_right"
+            "follow"
         ],
         termination=[
             # True when target object is found in perception list with sufficient confidence
             "obs.get('t') >= goal.get('duration')"
         ],
         policy_hints=[
-            "Default to **`nav`** when the target is visible.",
-            "Use `vyaw` in `nav` to rotate toward the target's horizontal offset: If the object is to the right, use **negative vyaw**. If the object is to the left, use **positive vyaw**. Adjust until the target is centered (x location is around 0.5).",
-            "Use `vx` to maintain distance: Move forward if `dist > goal['max_dist']`. Stop or reduce forward velocity if `dist <= goal['max_dist']`.",
-            "If the target object is not in sight, use 'turn_left' or 'turn_right' with 30-degree steps to search the area."
+            "Use **`follow`** to track and follow the target object."
         ]
     )

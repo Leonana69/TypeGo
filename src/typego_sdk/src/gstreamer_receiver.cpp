@@ -7,11 +7,13 @@
 class GStreamerNode : public rclcpp::Node {
 public:
     GStreamerNode() : Node("gstreamer_node") {
-        // Use QoS settings optimized for low latency
+        // QoS optimized for low latency
         auto qos = rclcpp::QoS(rclcpp::KeepLast(1))
-                   .best_effort()
-                   .durability_volatile();
+                    .best_effort()
+                    .durability_volatile();
+
         publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", qos);
+
 
         gst_init(nullptr, nullptr);
 
@@ -27,7 +29,7 @@ public:
             "! avdec_h264"  // Reduce decoder threads for lower latency
             "! videoconvert"  // Limit conversion threads
             "! video/x-raw, format=BGR"
-            "! appsink name=appsink emit-signals=true max-buffers=1 drop=true sync=false";  // Disable sync for lower latency
+            "! appsink name=appsink sync=false";  // Disable sync for lower latency
 
         GError* error = nullptr;
         pipeline_ = gst_parse_launch(pipeline_str.c_str(), &error);

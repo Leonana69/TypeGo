@@ -10,6 +10,7 @@ import base64, json, requests
 class ModelType(Enum):
     GPT4O = "gpt-4o"
     LOCAL_1B = "local-1b"
+    PIE_8B = "pie-8b"
 
 EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
 CHAT_LOG_FILE = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/chat_log.txt"
@@ -51,8 +52,7 @@ class LLMWrapper:
 
             response = requests.post(f"http://{EDGE_SERVICE_IP}:{50049}/process", files=http_load)
             response_text = response.json().get("result", "").split('\n\n\n')[0].strip()
-
-        else:
+        elif model_type == ModelType.GPT4O:
             response = self.gpt_client.responses.create(
                 model=model_type.value,
                 input=[{"role": "user", "content": content}],
@@ -60,6 +60,12 @@ class LLMWrapper:
                 stream=False
             )
             response_text = response.output_text
+        elif model_type == ModelType.PIE_8B:
+            json_data = {
+                'prompt': prompt
+            }
+            response = requests.post(f"http://{EDGE_SERVICE_IP}:{9000}/generate", json=json_data)
+            return response['result']['output']
 
         with open(CHAT_LOG_FILE, "a") as f:
             # remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
