@@ -2,7 +2,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
-#include <mutex>
+#include <atomic>
 
 class GStreamerNode : public rclcpp::Node {
 public:
@@ -14,22 +14,21 @@ public:
 
         publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", qos);
 
-
         gst_init(nullptr, nullptr);
 
         const char* interface = std::getenv("GSTREAMER_INTERFACE");
         std::string interface_str = interface ? std::string(interface) : "wlp38s0";
 
-        // Optimized pipeline with latency reduction settings
+        // Simplified pipeline - closer to your working gst-launch
         std::string pipeline_str =
             "udpsrc address=230.1.1.2 port=1721 multicast-iface=" + interface_str + " "
-            "! application/x-rtp, media=video, encoding-name=H264"
-            "! rtph264depay"
-            "! h264parse"
-            "! avdec_h264"  // Reduce decoder threads for lower latency
-            "! videoconvert"  // Limit conversion threads
-            "! video/x-raw, format=BGR"
-            "! appsink name=appsink sync=false";  // Disable sync for lower latency
+            "! application/x-rtp, media=video, encoding-name=H264 "
+            "! rtph264depay "
+            "! h264parse "
+            "! avdec_h264 "
+            "! videoconvert "
+            "! video/x-raw, format=BGR "
+            "! appsink name=appsink sync=false max-buffers=1 drop=true";
 
         GError* error = nullptr;
         pipeline_ = gst_parse_launch(pipeline_str.c_str(), &error);
@@ -40,28 +39,22 @@ public:
         }
 
         appsink_ = gst_bin_get_by_name(GST_BIN(pipeline_), "appsink");
-        gst_app_sink_set_emit_signals((GstAppSink*)appsink_, true);
-        gst_app_sink_set_max_buffers((GstAppSink*)appsink_, 1);
-        gst_app_sink_set_drop((GstAppSink*)appsink_, true);
         
-        // Configure appsink with proper synchronization
-        GstAppSinkCallbacks callbacks;
-        callbacks.eos = nullptr;
-        callbacks.new_preroll = nullptr;
-        callbacks.new_sample = &GStreamerNode::new_sample_callback;
-        gst_app_sink_set_callbacks((GstAppSink*)appsink_, &callbacks, this, nullptr);
-        
-        // Set pipeline to PLAYING state
+        // Set pipeline to PLAYING state first
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 
-        // Use a dedicated thread for processing samples
-        processing_thread_ = std::thread(&GStreamerNode::processing_loop, this);
+        // Create a timer to poll for samples instead of callbacks
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(10),  // 100Hz polling
+            std::bind(&GStreamerNode::timer_callback, this)
+        );
+
+        RCLCPP_INFO(this->get_logger(), "GStreamer node started");
     }
 
     ~GStreamerNode() {
-        running_ = false;
-        if (processing_thread_.joinable()) {
-            processing_thread_.join();
+        if (timer_) {
+            timer_->cancel();
         }
         gst_element_set_state(pipeline_, GST_STATE_NULL);
         gst_object_unref(appsink_);
@@ -69,40 +62,21 @@ public:
     }
 
 private:
-    static GstFlowReturn new_sample_callback(GstAppSink* sink, gpointer user_data) {
-        GStreamerNode* self = static_cast<GStreamerNode*>(user_data);
-        GstSample* sample = gst_app_sink_pull_sample(sink);
-        
+    void timer_callback() {
+        GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink_), 0);
         if (sample) {
-            std::lock_guard<std::mutex> lock(self->sample_mutex_);
-            if (self->current_sample_) {
-                gst_sample_unref(self->current_sample_);
-            }
-            self->current_sample_ = sample;
-            self->sample_available_ = true;
-        }
-        
-        return GST_FLOW_OK;
-    }
-
-    void processing_loop() {
-        while (rclcpp::ok() && running_) {
-            GstSample* sample_to_process = nullptr;
+            process_sample(sample);
+            gst_sample_unref(sample);
+            frame_count_++;
             
-            {
-                std::lock_guard<std::mutex> lock(sample_mutex_);
-                if (sample_available_) {
-                    sample_to_process = current_sample_;
-                    current_sample_ = nullptr;
-                    sample_available_ = false;
-                }
-            }
-            
-            if (sample_to_process) {
-                process_sample(sample_to_process);
-                gst_sample_unref(sample_to_process);
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // Log frame rate every 100 frames
+            static auto last_time = std::chrono::steady_clock::now();
+            if (frame_count_ % 100 == 0) {
+                auto now = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time);
+                double fps = 100000.0 / duration.count();
+                RCLCPP_INFO(this->get_logger(), "Processing at %.1f FPS", fps);
+                last_time = now;
             }
         }
     }
@@ -113,37 +87,46 @@ private:
         GstStructure* s = gst_caps_get_structure(caps, 0);
 
         int width, height;
-        gst_structure_get_int(s, "width", &width);
-        gst_structure_get_int(s, "height", &height);
+        if (!gst_structure_get_int(s, "width", &width) ||
+            !gst_structure_get_int(s, "height", &height)) {
+            return;
+        }
 
         GstMapInfo map;
         if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
             return;
         }
 
-        auto msg = std::make_unique<sensor_msgs::msg::Image>();
-        msg->header.stamp = this->now();
-        msg->header.frame_id = "base_link";
-        msg->height = height;
-        msg->width = width;
-        msg->encoding = "bgr8";
-        msg->is_bigendian = false;
-        msg->step = width * 3;
-        msg->data.assign(map.data, map.data + map.size);
+        // Pre-allocate message
+        msg_.header.stamp = this->now();
+        msg_.header.frame_id = "base_link";
+        msg_.height = height;
+        msg_.width = width;
+        msg_.encoding = "bgr8";
+        msg_.is_bigendian = false;
+        msg_.step = width * 3;
+
+        // Direct copy without intermediate allocation
+        msg_.data.resize(map.size);
+
+        std::memcpy(msg_.data.data(), map.data, map.size);
 
         gst_buffer_unmap(buffer, &map);
-        publisher_->publish(std::move(msg));
+        
+        auto t7 = std::chrono::steady_clock::now();
+        // Publish directly
+        publisher_->publish(msg_);
+        auto t_end = std::chrono::steady_clock::now();
+        auto dur8 = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t7).count();
+        RCLCPP_INFO(this->get_logger(), "Publish took %ld ms", dur8 / 1000);
     }
 
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
+    rclcpp::TimerBase::SharedPtr timer_;
     GstElement* pipeline_ = nullptr;
     GstElement* appsink_ = nullptr;
-    
-    std::thread processing_thread_;
-    std::mutex sample_mutex_;
-    GstSample* current_sample_ = nullptr;
-    bool sample_available_ = false;
-    bool running_ = true;
+    std::atomic<uint64_t> frame_count_{0};
+    sensor_msgs::msg::Image msg_;
 };
 
 int main(int argc, char** argv) {
