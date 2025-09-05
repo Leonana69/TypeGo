@@ -1,8 +1,8 @@
 <CycloneDDS>
-  <Domain id="any">
-    <SharedMemory>
-      <Enable>true</Enable>
-      <LogLevel>info</LogLevel>
-    </SharedMemory>
-  </Domain>
+    <Domain id="any">
+        <SharedMemory>
+            <Enable>false</Enable>
+            <LogLevel>info</LogLevel>
+        </SharedMemory>
+    </Domain>
 </CycloneDDS>

@@ -87,7 +87,7 @@ public:
             std::bind(&AdaptiveWaypointNode::image_callback, this, std::placeholders::_1));
         timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&AdaptiveWaypointNode::on_timer, this));
 
-        auto qos = rclcpp::QoS(1).reliable().transient_local();
+        auto qos = rclcpp::QoS(1).best_effort().transient_local();
         waypoint_pub_ = this->create_publisher<typego_interface::msg::WayPointArray>("/waypoints", qos);
         waypoint_marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/waypoint_markers", qos);
         load_waypoints(waypoint_file_);
@@ -136,17 +136,21 @@ private:
 
     void load_waypoints(const std::string &file) {
         std::ifstream f(file);
+        if (!f.is_open()) {
+            RCLCPP_WARN(this->get_logger(), "Waypoint file not found: %s", file.c_str());
+            return;
+        }
         int id;
         double x, y;
         std::string label;
         while (f >> id >> x >> y) {
-            std::getline(f, label);  // Read the rest of the line as label
-            // Trim leading whitespace from label
-            label.erase(0, label.find_first_not_of(" \t"));
+            std::getline(f, label);
+            if (label.empty()) label = "No label";
+            else label.erase(0, label.find_first_not_of(" \t"));
             waypoints_.push_back({id, x, y, label});
         }
         if (!waypoints_.empty()) {
-            next_id_ = waypoints_.back().id + 1;  // Increment ID for the next waypoint
+            next_id_ = waypoints_.back().id + 1;
         }
     }
 
@@ -208,46 +212,34 @@ private:
         if (min_dist > threshold_distance_meters_ && valid_waypoint_found) {
             RCLCPP_INFO(this->get_logger(), "Adding new waypoint at (%.2f, %.2f)", x, y);
 
-            // First process the latest image if available
-            int label_index = -1;
+            // Copy image safely
+            cv::Mat cloned_image;
             {
                 std::lock_guard<std::mutex> lock(image_mutex_);
-                if (latest_image_) {
-                    try {
-                        // Check for bgr8 encoding
-                        if (latest_image_->encoding != "bgr8") {
-                            RCLCPP_WARN(this->get_logger(), "Unsupported image encoding: %s", latest_image_->encoding.c_str());
-                            return;
-                        }
-
-                        // Create cv::Mat without cv_bridge
-                        cv::Mat image(
-                            latest_image_->height,
-                            latest_image_->width,
-                            CV_8UC3, // for "bgr8"
-                            const_cast<uint8_t*>(latest_image_->data.data()),
-                            latest_image_->step
-                        );
-
-                        // Clone the image to decouple from ROS buffer
-                        cv::Mat resized_image;
-                        cv::resize(image, resized_image, cv::Size(640, 360));
-
-                        label_index = send_image_for_detection(resized_image);
-                    } catch (const std::exception& e) {
-                        RCLCPP_ERROR(this->get_logger(), "Image conversion exception: %s", e.what());
-                    }
+                if (latest_image_ && latest_image_->encoding == "bgr8") {
+                    cv::Mat img(latest_image_->height,
+                                latest_image_->width,
+                                CV_8UC3,
+                                const_cast<uint8_t*>(latest_image_->data.data()),
+                                latest_image_->step);
+                    cv::resize(img, cloned_image, cv::Size(640, 360));
                 }
             }
-            std::string label = (label_index >= 0 && label_index < 3)
-                      ? labels[label_index]
-                      : std::string("No label");
-            waypoints_.push_back({next_id_, x, y, label});
-            next_id_++;
-            save_waypoints(waypoint_file_);
-        }
 
-        publish_waypoints();
+            // Run detection in background
+            std::thread([this, img = std::move(cloned_image), x, y]() {
+                int label_index = -1;
+                if (!img.empty()) {
+                    label_index = send_image_for_detection(img);
+                }
+                std::string label = (label_index >= 0 && label_index < 3)
+                                ? labels[label_index] : "No label";
+                Waypoint wp{next_id_++, x, y, label};
+                waypoints_.push_back(wp);
+                save_waypoints(waypoint_file_);
+                publish_waypoints();
+            }).detach();
+        }
     }
 
     int send_image_for_detection(const cv::Mat& image) {

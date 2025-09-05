@@ -18,8 +18,9 @@ docker_stop:
 docker_start:
 	@make docker_stop
 	@echo "=> Starting go2-sdk..."
-	docker run -td --privileged --net=host \
+	docker run -td --privileged --net=host --ipc=host \
     	--name="go2-sdk" \
+		--shm-size=2g \
 		--env-file ./docker/.env \
 		go2-sdk:0.1
 

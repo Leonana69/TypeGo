@@ -113,12 +113,12 @@ private:
 
         gst_buffer_unmap(buffer, &map);
         
-        auto t7 = std::chrono::steady_clock::now();
+        // auto t7 = std::chrono::steady_clock::now();
         // Publish directly
         publisher_->publish(msg_);
-        auto t_end = std::chrono::steady_clock::now();
-        auto dur8 = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t7).count();
-        RCLCPP_INFO(this->get_logger(), "Publish took %ld ms", dur8 / 1000);
+        // auto t_end = std::chrono::steady_clock::now();
+        // auto dur8 = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t7).count();
+        // RCLCPP_INFO(this->get_logger(), "Publish took %ld ms", dur8 / 1000);
     }
 
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;

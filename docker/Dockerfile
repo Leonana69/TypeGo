@@ -38,6 +38,11 @@ RUN apt-get update && apt-get install -y ros-humble-slam-toolbox
 # install nav2
 RUN apt-get update && apt-get install -y ros-humble-navigation2 ros-humble-nav2-bringup
 
+# install cyclonedds
+RUN apt-get update && apt-get install -y ros-humble-rmw-cyclonedds-cpp ros-humble-cyclonedds
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV CYCLONEDDS_URI=/workspace/src/typego_sdk/config/cyclonedds_shm.xml
+
 # source the setup files
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> /root/.bashrc
 
