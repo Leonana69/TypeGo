@@ -448,38 +448,6 @@ class Go2Wrapper(RobotWrapper):
 
         print_t(self.registry.get_skill_list())
 
-        # Define the robot skillset
-        # self.ll_skillset.add_low_level_skill("stand_up", lambda: self._go2_command('stand_up'), "Stand up")
-        # self.ll_skillset.add_low_level_skill("lie_down", lambda: self._go2_command('stand_down'), "Stand down")
-        # self.ll_skillset.add_low_level_skill("goto_waypoint", self.goto_waypoint, "Go to a way point", args=[SkillArg("id", int)])
-        # self.ll_skillset.add_low_level_skill("stop", self.stop_action, "Stop current action")
-        # self.ll_skillset.add_low_level_skill("look_object", self.look_object, "Look at an object", args=[SkillArg("object_name", str)])
-        # self.ll_skillset.add_low_level_skill("nod", self.nod, "Nod the robot's head")
-        # self.ll_skillset.add_low_level_skill("look_up", self.look_up, "Look up")
-
-        # high_level_skills = [
-        #     {
-        #         "name": "scan",
-        #         "definition": "{8{?is_visible($1){->True}rotate(45)}->False}",
-        #         "description": "Rotate to find a specific object $1 when it's *not* in current view",
-        #     },
-        #     {
-        #         "name": "scan_description",
-        #         "definition": "{8{_1=probe($1);?_1!=False{->_1}rotate(45)}->False}",
-        #         "description": "Rotate to find an abstract object $1 when it's *not* in current view",
-        #     },
-        #     {
-        #         "name": "orienting",
-        #         "definition": "{_1=object_x($1);rotate((0.5-_1)*80)}",
-        #         "description": "Rotate to align with object $1",
-        #     },
-        #     {
-        #         "name": "goto_object",
-        #         "definition": "2{orienting($1);_1=object_distance($1)/3;{move(_1, 0)}}",
-        #         "description": "Move to object $1 in the view (orienting then go forward)"
-        #     }
-        # ]
-
         self.function_queue = queue.Queue()
         self.function_thread = threading.Thread(target=self.worker)
         
@@ -589,12 +557,20 @@ class Go2Wrapper(RobotWrapper):
         self.command_queue.put(control)
 
     def command_sender(self):
-        send_request = lambda control: requests.post(self.robot_url + '/control', json=control, headers={"Content-Type": "application/json"}, timeout=0.3)
-        current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        send_request = lambda control: (
+            print(f"Sending control: {control}") or 
+            requests.post(self.robot_url + '/control', json=control, 
+                        headers={"Content-Type": "application/json"}, timeout=0.5)
+        )
+        current_euler = np.array([0.0, 0.0, 0.0])
         control = {"command": "stop"}
+        last_euler_sent = 0.0
         while self.running:
             try:
                 control = self.command_queue.get(timeout=0.05)
+                if control["command"] == "stop":
+                    current_euler[:] = 0.0
+                    last_euler_sent = 0.0
             except queue.Empty:
                 # if control["command"] != "euler":
                 #     control = {"command": "stop"}
@@ -603,28 +579,45 @@ class Go2Wrapper(RobotWrapper):
                 pass
 
             if control["command"] == "euler":
-                # Convert to radians and update current_euler
                 current_euler[0] = control.get("roll", 0.0)
                 current_euler[1] = control.get("pitch", 0.0)
                 current_euler[2] = control.get("yaw", 0.0)
-            elif current_euler[0] != 0.0 or current_euler[1] != 0.0 or current_euler[2] != 0.0:
-                current_euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-                print_t("[Go2] Resetting Euler angles to zero")
+
                 try:
-                    send_request({"command": "euler", "roll": 0.0, "pitch": 0.0, "yaw": 0.0})
+                    result = send_request({
+                        "command": "euler",
+                        "roll": float(current_euler[0]),
+                        "pitch": float(current_euler[1]),
+                        "yaw": float(current_euler[2]),
+                    })
+                    if result.status_code != 200:
+                        print_t(f"[Go2] Euler command failed: {result.status_code}, {result.text}")
                 except requests.RequestException as e:
-                    pass
+                    print_t(f"[Go2] Euler command failed: {e}")
 
-            if control["command"] == "nav" and control.get("vx", 0.0) == 0.0 and control.get("vy", 0.0) == 0.0 and control.get("vyaw", 0.0) == 0.0:
-                control = {"command": "stop"}
+                last_euler_sent = time.time()
+            else:
+                try:
+                    result = send_request(control)
+                    if result.status_code != 200:
+                        print_t(f"[Go2] Command failed: {result.status_code}, {result.text}")
+                except requests.RequestException as e:
+                    print_t(f"[Go2] Command failed: {e}")
 
-            try:
-                result = send_request(control)
-                if result.status_code != 200:
-                    print_t(f"[Go2] Command failed: {result.status_code}, {result.text}")
-            except requests.RequestException as e:
-                print_t(f"[Go2] Command request failed: {e}")
-                continue
+            # Periodic euler resend if active
+            if (current_euler != 0.0).any() and (time.time() - last_euler_sent > 0.5):
+                try:
+                    result = send_request({
+                        "command": "euler",
+                        "roll": float(current_euler[0]),
+                        "pitch": float(current_euler[1]),
+                        "yaw": float(current_euler[2]),
+                    })
+                    if result.status_code != 200:
+                        print_t(f"[Go2] Periodic euler resend failed: {result.status_code}, {result.text}")
+                except requests.RequestException as e:
+                    print_t(f"[Go2] Periodic euler resend failed: {e}")
+                last_euler_sent = time.time()
 
     @robot_skill("stand_up", description="Make the robot stand up.")
     @go2action("sit_stand")
@@ -719,7 +712,7 @@ class Go2Wrapper(RobotWrapper):
 
             self._go2_command("nav", vx=round(float(vx), 3), vy=round(float(vy), 3), vyaw=0.0)
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
-        self._go2_command("stop")
+        self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
         return True
     
     @go2action
@@ -757,12 +750,14 @@ class Go2Wrapper(RobotWrapper):
     def follow(self, object: str) -> bool:
         print_t(f"[Go2] Following {object}")
         last_seen_cx = 0.5
+        current_pitch = 0.2
+        self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
         while not self.stop_action_event.is_set():
             info = self.get_obj_info(object)
             if info is not None:
                 last_seen_cx = info.cx
                 if abs(last_seen_cx - 0.5) < 0.1:
-                    vayw = 0.0
+                    vyaw = 0.0
                 else:
                     vyaw = (0.5 - last_seen_cx) * 2.0
                     
@@ -772,13 +767,20 @@ class Go2Wrapper(RobotWrapper):
                     vx = -0.5
                 else:
                     vx = 0.0
+
+                if abs(info.cy - 0.5) > 0.1:
+                    current_pitch += (info.cy - 0.5) / 2.0
+                    self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
+                    time.sleep(0.2)
                 self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
             else:
+                current_pitch = 0.2
+                self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
                 if last_seen_cx - 0.5 < 0.0:
                     self._rotate(30)
                 else:
                     self._rotate(-30)
-            time.sleep(0.1)
+            time.sleep(0.2)
         self._go2_command("stop")
         return False
 
@@ -805,103 +807,7 @@ class Go2Wrapper(RobotWrapper):
     def turn_right(self, deg: float) -> bool:
         print_t(f"[Go2] Turning right {deg} degrees")
         return self._rotate(-deg)
-
-    ########################################################
-#     FOV_DEG = 120
-#     MAX_STEP = 1.0
-#     TARGET_REACHED_DIST = 1.5
-#     TARGET_REACHED_ANGLE = 30
-#     MAX_STEPS = 100
-
-#     def reached_target(self, target: str) -> bool:
-#         obj_info = self.get_obj_info(target)
-#         return obj_info is not None and obj_info.depth < self.TARGET_REACHED_DIST and abs(self.x_to_angle(obj_info.x)) < self.TARGET_REACHED_ANGLE
     
-#     def call_llm(self, prompt):
-#         from openai import OpenAI
-#         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-#         response = client.chat.completions.create(
-#             model="gpt-4o",
-#             messages=[{"role": "user", "content": prompt}],
-#             temperature=0.3,
-#         )
-#         return response.choices[0].message.content.strip().lower()
-    
-#     def x_to_angle(self, x):
-#         """
-#         Convert x coordinate to angle in degrees.
-#         """
-#         return (x - 0.5) * self.FOV_DEG
-
-#     def build_prompt(self, user_goal="chase the sports ball"):
-        
-#         obj_info = self.get_obj_info("sports ball")
-
-#         if obj_info is not None:
-#             visual = f"Target is in view at distance {obj_info.depth:.2f} and angle {self.x_to_angle(obj_info.x):.2f} degrees."
-#             self.last_target_x = obj_info.x
-#         else:
-#             visual = "Target is not in view, try turn left or right according to the last seen angle to find it. Target was last seen at angle {:.2f} degrees.".format(self.x_to_angle(self.last_target_x) if hasattr(self, 'last_target_x') else 0.0)
-#             # gen_goal_prom = (
-#             # f"Write a goal for a robot to {user_goal} with basic behavioral guidance. "
-#             # "Include some tips to achive the goal, and how to avoid repetitive actions like continuous turning. "
-#             # "Limit the response to 3 sentences and avoid bullet points. "
-#             # "Example: 'If you can see the target, chase it quickly.If the angle is small, you would better move forward. Only when the target is not in view, turn left or right to search quickly. Avoid turn left and then turn right repeatedly. You can predict the target's movement and move ahead to catch.'"
-#             #     )
-#             # goal = self.call_llm(gen_goal_prom)
-#         return f"""You are a robot dog in a 2D plane. Your goal is to chase a target object, get close and facing the target. When the target is far away, you need to move faster. When the target is close, you should slow down and face it. You can rotate to adjust your direction.
-# The target infomation: {visual}
-# Choose your next move: 
-# - nav(vx, vy, vyaw) to move in the direction of vx, vy, vyaw. Max vx speed is 2.0 m/s, vy is 0.2m/s and vyaw is 0.9 rad/s (if target angle is +, you should output negative vyaw to compensate).
-# Only output one command without any punctuation mark. Do not explain."""
-    
-#     def _go2_command_stream(self, event, command_queue):
-#         vx, vy, vyaw = 0.0, 0.0, 0.0
-#         while event.is_set():
-#             try:
-#                 control = command_queue.get(timeout=0.2)
-#                 if control.startswith("nav(") and control.endswith(")"):
-#                     # Parse the action string to extract vx, vy, vyaw
-#                     control = control[4:-1].strip()  # Remove 'nav(' and ')'
-#                     vx, vy, vyaw = map(float, control.split(','))
-#                     self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
-#             except queue.Empty:
-#                 self._go2_command("nav", vx=vx, vy=vy, vyaw=vyaw)
-#             except requests.RequestException as e:
-#                 print_t(f"[Go2] Command request failed: {e}")
-
-#     @go2action("require_standing, trigger_movement")
-#     def chase(self):
-#         step = 0
-
-#         event = threading.Event()
-#         command_queue = queue.Queue()
-#         event.set()
-#         command_thread = threading.Thread(target=self._go2_command_stream, args=(event, command_queue))
-#         command_thread.start()
-
-#         while step < self.MAX_STEPS:# and not self.reached_target("sports ball"):
-#             start_time = time.time()
-#             prompt = self.build_prompt()
-#             print(f"\n=== Step {step} ===")
-#             print("Prompt:\n", prompt)
-#             action = self.call_llm(prompt)
-#             print("LLM Action:", action)
-#             command_queue.put(action)
-#             step += 1
-#             time.sleep(max(0, 1.0 - (time.time() - start_time)))
-
-#         event.clear()
-#         time.sleep(0.5)  # Give some time for the last command to be processed
-#         self._go2_command("nav", vx=0, vy=0, vyaw=0)
-#         if self.reached_target("sports ball"):
-#             print("✅ Target reached!")
-#         else:
-#             print("❌ Max steps reached. Final distance:")
-
-    ########################################################
-    # @go2action("require_standing, trigger_movement")
-    # @overrides
     def _rotate(self, deg: float) -> bool:
         """
         Rotates the robot by the specified angle in degrees.
@@ -929,7 +835,7 @@ class Go2Wrapper(RobotWrapper):
 
             remaining_angle = delta_rad - accumulated_angle
 
-            print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
+            # print_t(f"-> Remaining angle: {math.degrees(remaining_angle):.2f} degrees, accumulated: {math.degrees(accumulated_angle):.2f} degrees")
             if abs(remaining_angle) < 0.01 or delta_rad * remaining_angle < 0:
                 # If the remaining angle is small enough or we have overshot the target
                 break
@@ -939,8 +845,8 @@ class Go2Wrapper(RobotWrapper):
             self._go2_command("nav", vx=0.0, vy=0.0, vyaw=round(float(vyaw), 3))
 
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
-        self._go2_command("stop")
-        time.sleep(0.8)
+        self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
+        time.sleep(0.3)
         return True
     
     @robot_skill("nod", description="Nod the robot's head.")
@@ -956,7 +862,7 @@ class Go2Wrapper(RobotWrapper):
             actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 0.3))
         go2_action = Go2Action(actions)
         go2_action.execute()
-        self._go2_command("stop")
+        self._go2_command("euler", roll=0, pitch=0, yaw=0)
         return True
     
     @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")
