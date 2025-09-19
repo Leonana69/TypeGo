@@ -1,0 +1,309 @@
+# EXAMPLE 1
+## NEW USER INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
+
+## HIGH-LEVEL PLAN
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 1,
+		"next_waypoint": 8
+	},
+
+	"global_trans": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"trans": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "N/A", "action": "goto_waypoint(8)", "status": "in-progress"}
+]
+
+## OBSERVATION
+{
+  "t": "14:16:10",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "table",
+	  "bbox": [
+		0.55,
+		0.63,
+		0.40,
+		0.73
+	  ],
+	  "dist": 2.82
+	},
+	{
+	  "name": "apple",
+	  "bbox": [
+		0.29,
+		0.52,
+		0.11,
+		0.22
+	  ],
+	  "dist": 0.62
+	}
+  ],
+  "nav": {
+	"current_wp": 3,
+	"waypoints": [
+		{"id": 1, "label": "room"},
+		{"id": 2, "label": "room"},
+		{"id": 3, "label": "hallway"},
+		{"id": 8, "label": "hallway"},
+		{"id": 11, "label": "hallway"},
+		{"id": 12, "label": "hallway"}
+	]
+  }
+}
+
+## OUTPUT
+{
+	"action": "continue()",
+	"transition": null
+}
+
+
+------------
+# EXAMPLE 2
+## NEW USER INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
+
+## HIGH-LEVEL PLAN
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
+
+	"global_trans": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"trans": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"}
+]
+
+## OBSERVATION
+{
+  "t": "14:16:50",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "table",
+	  "bbox": [
+		0.55,
+		0.63,
+		0.40,
+		0.73
+	  ],
+	  "dist": 2.82
+	},
+	{
+	  "name": "apple",
+	  "bbox": [
+		0.29,
+		0.52,
+		0.11,
+		0.22
+	  ],
+	  "dist": 0.62
+	}
+  ],
+  "nav": {
+	"current_wp": 8,
+	"waypoints": [
+		{"id": 1, "label": "room"},
+		{"id": 2, "label": "room"},
+		{"id": 3, "label": "hallway"},
+		{"id": 8, "label": "hallway"},
+		{"id": 11, "label": "hallway"},
+		{"id": 12, "label": "hallway"}
+	]
+  }
+}
+
+## OUTPUT
+{
+	"action": "goto_waypoint(11)",
+	"transition": null
+}
+
+
+------------
+# EXAMPLE 3
+## NEW USER INSTRUCTION
+Go around the hallway and check if there is anyone there. Then report back to me.
+
+## HIGH-LEVEL PLAN
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
+
+	"global_trans": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"GOTO_NEXT": {
+			"action": "go to next_waypoint",
+			"update": {
+		        "current_index": "current_index + 1",
+		        "next_waypoint": "target_waypoints[current_index] if current_index < len(target_waypoints) else None"
+		    },
+			"trans": [
+				"RETURN_HOME: next_waypoint is null"
+			]
+		},
+	}
+}
+
+Action History for Current State: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"},
+	{"start": "14:16:50", "end": "N/A", "action": "goto_waypoint(11)", "status": "in-progress"}
+]
+
+## OBSERVATION
+{
+  "t": "14:17:40",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "person",
+	  "bbox": [
+		0.45,
+		0.63,
+		0.40,
+		0.73
+	  ],
+	  "dist": 2.82
+	},
+	{
+	  "name": "apple",
+	  "bbox": [
+		0.29,
+		0.52,
+		0.11,
+		0.22
+	  ],
+	  "dist": 0.62
+	}
+  ],
+  "nav": {
+	"current_wp": 8,
+	"waypoints": [
+		{"id": 1, "label": "room"},
+		{"id": 2, "label": "room"},
+		{"id": 3, "label": "hallway"},
+		{"id": 8, "label": "hallway"},
+		{"id": 11, "label": "hallway"},
+		{"id": 12, "label": "hallway"}
+	]
+  }
+}
+
+## OUTPUT
+{
+	"action": "stop()",
+	"transition": "PROCESS_PERSON"
+}
+
+------------
+# EXAMPLE 4
+## NEW USER INSTRUCTION
+None
+
+## ROBOT STATE
+State: {"time": "14:17:40", "posture": "standing", "waypoint_id": 8}
+
+## HIGH-LEVEL PLAN
+{
+	"local_data": {
+		"target_waypoints": [3, 8, 11, 12],
+		"start_waypoint": 1,
+		"current_index": 2,
+		"next_waypoint": 11
+	},
+
+	"global_trans": [
+		"PROCESS_PERSON: see any person"
+	],
+
+	"current_state": {
+		"PROCESS_PERSON": {
+			"action": "take a picture",
+			"trans": ["RETURN_HOME: always"]
+		},
+	}
+}
+
+Action History for Current State: [
+    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(3)", "status": "success"},
+    {"start": "14:16:08", "end": "14:16:45", "action": "goto_waypoint(8)", "status": "success"},
+	{"start": "14:16:50", "end": "14:17:30", "action": "goto_waypoint(11)", "status": "stopped"}
+]
+
+## SCENE DESCRIPTION
+Objects: [
+    {"name": "person", "x": 0.45, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
+    {"name": "apple", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
+]
+
+Waypoints: [
+	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
+	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
+	{"id": 3, "loc": [3.44, -1.95], "label": "hallway"},
+	{"id": 8, "loc": [2.9, -4.44], "label": "hallway"},
+	{"id": 11, "loc": [0.64, -3.60], "label": "hallway"},
+	{"id": 12, "loc": [-1.34, -2.51], "label": "hallway"}
+]
+
+## OUTPUT
+{
+	"action": "take_picture()",
+	"transition": "RETURN_HOME"
+}

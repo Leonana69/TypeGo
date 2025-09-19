@@ -289,8 +289,8 @@ class Go2Observation(RobotObservation):
             },
             "perception": self.yolo_client.latest_result[1] if self.yolo_client.latest_result else [],
             "nav": {
-                "waypoints": self.slam_map.get_waypoint_list_str(),
                 "current_wp": self.slam_map.get_nearest_waypoint_id(self.position),
+                "waypoints": self.slam_map.get_waypoint_list_str()
             }
         }
 
@@ -521,6 +521,10 @@ class Go2Wrapper(RobotWrapper):
         self.function_thread.start()
         self.command_thread.start()
         self.observation.start()
+
+        time.sleep(1)
+        self.nod()
+
         return True
 
     @overrides
@@ -732,7 +736,7 @@ class Go2Wrapper(RobotWrapper):
     def nav(self, vx: float, vyaw: float) -> bool:
         print_t(f"[Go2] Nav with speed {vx} m/s and yaw {vyaw} rad/s")
         return self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
-
+    
     @robot_skill("search", description="Rotate to find a specific object when it's not in current view.")
     @go2action
     def search(self, object: str) -> bool:
@@ -858,11 +862,32 @@ class Go2Wrapper(RobotWrapper):
         print("-> Nod")
         actions = []
         for _ in range(2):  # 2 up/down cycles = 4 total motions
-            actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.3, yaw=0), 0.3))
+            actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.4, yaw=0), 0.3))
             actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 0.3))
         go2_action = Go2Action(actions)
         go2_action.execute()
         self._go2_command("euler", roll=0, pitch=0, yaw=0)
+        return True
+
+    @robot_skill("wiggle", description="Wiggle the robot's limbs.")
+    @go2action
+    def wiggle(self) -> bool:
+        print_t(f"[Go2] Wiggling...")
+        actions = []
+        for _ in range(2):  # 2 up/down cycles = 4 total motions
+            actions.append((lambda: self._go2_command("euler", roll=0.6, pitch=0.0, yaw=0), 0.5))
+            actions.append((lambda: self._go2_command("euler", roll=-0.6, pitch=0.0, yaw=0), 0.5))
+        go2_action = Go2Action(actions)
+        go2_action.execute()
+        self._go2_command("euler", roll=0, pitch=0, yaw=0)
+        return True
+    
+    @robot_skill("stretch", description="Stretch the robot's limbs.")
+    @go2action
+    def stretch(self) -> bool:
+        print_t(f"[Go2] Stretching...")
+        self._go2_command("stretch")
+        time.sleep(2.0)
         return True
     
     @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")

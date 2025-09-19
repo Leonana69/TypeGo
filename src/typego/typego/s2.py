@@ -17,6 +17,7 @@ def format_time(ts):
 class ActionItem:
     start: float
     end: float
+    state: str
     content: str
     status: str
 
@@ -39,13 +40,13 @@ class ActionItem:
             self.end = time.time()
             self.status = STATUS_SUCCESS if result else STATUS_FAILED
 
-class S2Plan:
+class S2DPlan:
     ID_COUNTER = 0
-    HISTORY: dict[int, "S2Plan"] = {}
-    CURRENT: "S2Plan" = None
+    HISTORY: dict[int, "S2DPlan"] = {}
+    CURRENT: "S2DPlan" = None
     def __init__(self, content: str, plan_json: dict):
-        self.id = S2Plan.ID_COUNTER
-        S2Plan.ID_COUNTER += 1
+        self.id = S2DPlan.ID_COUNTER
+        S2DPlan.ID_COUNTER += 1
 
         self.local_data = plan_json.get("local_data", {})
         self.global_trans = plan_json.get("global_trans", [])
@@ -57,8 +58,10 @@ class S2Plan:
         self.content = content
         self.status = STATUS_IN_PROGRESS
 
-        S2Plan.HISTORY[self.id] = self
-        S2Plan.CURRENT = self
+        self.s2s_history: list[ActionItem] = []  # track actions in this plan
+
+        S2DPlan.HISTORY[self.id] = self
+        S2DPlan.CURRENT = self
 
         after_init_states = self.states[self.current_state].get("trans", [])
         for transition in after_init_states:
@@ -71,25 +74,20 @@ class S2Plan:
     def init_default(cls):
         """Initialize a default plan to track initial robot actions before any plan arrives."""
         default_plan = cls.__new__(cls)  # bypass __init__
-        default_plan.id = cls.ID_COUNTER
-        cls.ID_COUNTER += 1
+        default_plan.id = 0
+        cls.ID_COUNTER = 1
 
         default_plan.local_data = {}
         default_plan.global_trans = [
-            "GREET_PERSON: see any person",
-            "LOOK_AROUND: see any interesting object"
+            "CHASE_BALL: see a sports ball"
         ]
         default_plan.states = {
             "IDLE": {
                 "action": None,
                 "trans": []
             },
-            "GREET_PERSON": {
-                "action": "look at the person and nod",
-                "trans": ["IDLE: always"]
-            },
-            "LOOK_AROUND": {
-                "action": "look around for interesting things",
+            "CHASE_BALL": {
+                "action": "follow the sports ball",
                 "trans": ["IDLE: always"]
             }
         }
@@ -99,7 +97,6 @@ class S2Plan:
         default_plan.end_time = None
         default_plan.content = DEFAULT_PLAN_CONTENT
         default_plan.status = STATUS_IN_PROGRESS
-        default_plan.action_list: list[ActionItem] = []  # type: ignore # track initial actions
 
         cls.HISTORY[default_plan.id] = default_plan
         cls.CURRENT = default_plan
@@ -110,7 +107,7 @@ class S2Plan:
         cls.CURRENT.status = STATUS_IN_PROGRESS
         cls.CURRENT.start_time = time.time()
         cls.CURRENT.end_time = None
-        cls.CURRENT.action_list = []  # reset action list for default plan
+        cls.CURRENT.s2s_history = []  # reset action list for default plan
 
     @classmethod
     def parse(cls, instruct: str, llm_response: str):
@@ -173,14 +170,14 @@ class S2Plan:
         
         if self.current_state == new_state:
             return
-        self.action_list: list[ActionItem] = []
+        
         self.current_state = new_state
         self.update_local_data()
 
         if new_state == "DONE":
             self.status = STATUS_SUCCESS
             self.end_time = time.time()
-            S2Plan.CURRENT = None
+            S2DPlan.CURRENT = None
 
     def process_s1_response(self, response: str) -> str | None:
         if response.startswith('```json'):
@@ -198,16 +195,17 @@ class S2Plan:
         """Add an action to the current state."""
         if self.status != STATUS_IN_PROGRESS:
             raise ValueError("Cannot add action to a non-in-progress plan.")
-        
-        action_item = ActionItem(start=time.time(), end=None, content=action, status=STATUS_IN_PROGRESS)
-        self.action_list.append(action_item)
+
+        action_item = ActionItem(start=time.time(), end=None, state=self.current_state, content=action, status=STATUS_IN_PROGRESS)
+        self.s2s_history.append(action_item)
 
     def finish_action(self, result: bool):
         """Finish the last action with a result."""
-        if not self.action_list or not any(action.status == STATUS_IN_PROGRESS for action in self.action_list):
+        # TODO: fix this function
+        if not self.s2s_history or not any(action.status == STATUS_IN_PROGRESS for action in self.s2s_history):
             raise ValueError("Cannot finish action: no actions in progress.")
 
-        for action in reversed(self.action_list):
+        for action in reversed(self.s2s_history):
             if action.status == STATUS_IN_PROGRESS:
                 action.finish(result)
                 break
@@ -230,13 +228,15 @@ class S2Plan:
             "status": self.status
         })
     
-    def get_s1_input(self) -> str:
+    def get_s2s_input(self) -> str:
         info = {
             "local_data": self.local_data,
             "global_trans": self.global_trans,
             "current_state": {
                 self.current_state: self.states[self.current_state],
-            }
+            },
+
+            "action_history": [str(action) for action in self.s2s_history if action.is_finished()]
         }
         return json.dumps(info, indent=4)
 
@@ -278,7 +278,7 @@ test_response = """
 ```
 """
 def test_s2_plan():
-    # plan = S2Plan.parse("Play with the person for 3 minutes", test_response)
+    # plan = S2DPlan.parse("Play with the person for 3 minutes", test_response)
     # print(plan.get_current_state())
     # plan.transit("PLAY")
     # print(plan.local_data)
@@ -291,9 +291,9 @@ def test_s2_plan():
     # assert plan.get_current_state() == "DONE"
     # assert plan.status == STATUS_SUCCESS
 
-    # plan = S2Plan.parse("Play with the person for 2 minutes", test_response)
-    # print(S2Plan.get_history_sorted_by_time())
-    S2Plan.init_default()
-    print(S2Plan.get_history_sorted_by_time())
+    # plan = S2DPlan.parse("Play with the person for 2 minutes", test_response)
+    # print(S2DPlan.get_history_sorted_by_time())
+    S2DPlan.init_default()
+    print(S2DPlan.get_history_sorted_by_time())
 
 # test_s2_plan()

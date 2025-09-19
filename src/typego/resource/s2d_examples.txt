@@ -1,32 +1,88 @@
 # EXAMPLE 1
-## USER INSTRUCTION
+## NEW USER INSTRUCTION
 Check if there is any person in the hallway, if so take a picture of him and report the message. Go back to the room after that.
-
-## ROBOT STATE
-State: {"time": "12:10:45", "posture": "moving", "current_waypoint_id": 1}
 
 Instruction History: [
 	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
 	{"id": "2", "start": "12:09:51", "end": "N/A", "content": "Dance for me.", "status": "in_progress"}
 ]
 
-## SCENE DESCRIPTION
-Objects: [
-	{"name": "chair", "x": 0.55, "y": 0.63, "size": [0.40, 0.73], "dist": 2.82},
-	{"name": "table", "x": 0.12, "y": 0.34, "size": [0.77, 0.34], "dist": 1.23},
-	{"name": "tv", "x": 0.43, "y": 0.42, "size": [0.32, 0.23], "dist": 0.99}
-]
-
-Waypoints: [
-    {"id": 0, "loc": [0.1, -2.0], "label": "room"},
-    {"id": 1, "loc": [-1.02, 0.68], "label": "room"},
-    {"id": 2, "loc": [-4.06, 0.64], "label": "hallway"},
-    {"id": 3, "loc": [-6.49, 0.01], "label": "hallway"},
-	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
-    {"id": 7, "loc": [-10.66, 7.48], "label": "hallway"},
-    {"id": 8, "loc": [-11.61, 9.68], "label": "hallway"},
-    {"id": 12, "loc": [-4.14, 4.57], "label": "hallway"},
-]
+## OBSERVATION
+{
+  "t": "16:09:13",
+  "robot": {
+    "posture": "standing"
+  },
+  "perception": [
+    {
+      "name": "chair",
+      "bbox": [
+		0.55,
+		0.63,
+		0.40,
+		0.73
+	  ],
+      "dist": 2.82
+    },
+	{
+	  "name": "table",
+	  "bbox": [
+		0.12,
+		0.34,
+		0.77,
+		0.34
+	  ],
+	  "dist": 1.23
+	},
+	{
+	  "name": "tv",
+	  "bbox": [
+		0.43,
+		0.42,
+		0.32,
+		0.23
+	  ],
+	  "dist": 0.99
+	}
+  ],
+  "nav": {
+	"current_wp": 1,
+    "waypoints": [
+      {
+        "id": 0,
+        "label": "room"
+      },
+      {
+        "id": 1,
+        "label": "room"
+      },
+      {
+        "id": 2,
+        "label": "hallway"
+      },
+	  {
+		"id": 3,
+		"label": "hallway"
+	  },
+	  {
+		"id": 4,
+		"label": "hallway"
+	  },
+	  {
+		"id": 7,
+		"label": "hallway"
+	  },
+	  {
+		"id": 8,
+		"label": "hallway"
+	  },
+	  {
+		"id": 12,
+		"label": "hallway"
+	  }
+    ]
+  }
+}
 
 ## OUTPUT
 A new instruction is received, so the in-progress task (2) will be stopped since the new instruction does not explicitly say the in-progress task should be resumed. The robot will start executing the new task.
@@ -81,31 +137,72 @@ To implement this behavior, we define:
 ```
 
 # EXAMPLE 2
-## USER INSTRUCTION
+## NEW USER INSTRUCTION
 Play with the person for 3mins.
-
-## ROBOT STATE
-State: {"time": "12:12:52", "posture": "standing", "current_waypoint_id": 1}
 
 Instruction History: [
 	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
 	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"}
 ]
 
-## SCENE DESCRIPTION dd
-Objects: [
-	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
-	{"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
-	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 5, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 6, "loc": [-1.34, -2.51], "label": "hallway"}
-]
+## OBSERVATION
+{
+  "t": "16:10:23",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "chair",
+	  "bbox": [
+		0.25,
+		0.53,
+		0.20,
+		0.51
+	  ],
+	  "dist": 1.82
+	},
+	{
+	  "name": "person",
+	  "bbox": [
+		0.29,
+		0.52,
+		0.11,
+		0.22
+	  ],
+	  "dist": 0.62
+	}
+  ],
+  "nav": {
+	"current_wp": 1,
+	"waypoints": [
+	  {
+		"id": 1,
+		"label": "room"
+	  },
+	  {
+		"id": 2,
+		"label": "room"
+	  },
+	  {
+		"id": 3,
+		"label": "room"
+	  },
+	  {
+		"id": 4,
+		"label": "hallway"
+	  },
+	  {
+		"id": 5,
+		"label": "hallway"
+	  },
+	  {
+		"id": 6,
+		"label": "hallway"
+	  }
+	]
+  }
+}
 
 ## OUTPUT
 A new instruction is received and there is no in-progress task, so the robot can immediately start executing the new task.
@@ -143,11 +240,8 @@ We assume the agent system can monitor elapsed time since task start to trigger 
 ```
 
 # EXAMPLE 3
-## USER INSTRUCTION
+## NEW USER INSTRUCTION
 None
-
-## ROBOT STATE
-State: {"time": "12:12:52", "posture": "standing", "current_waypoint_id": 1}
 
 Instruction History: [
 	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
@@ -155,20 +249,64 @@ Instruction History: [
 	{"id": "3", "start": "13:12:34", "end": "13:14:46", "content": "Play with the person", "status": "paused"}
 ]
 
-## SCENE DESCRIPTION dd
-Objects: [
-	{"name": "chair", "x": 0.25, "y": 0.53, "size": [0.20, 0.51], "dist": 1.82},
-	{"name": "person", "x": 0.29, "y": 0.52, "size": [0.11, 0.22], "dist": 0.62}
-]
-
-Waypoints: [
-	{"id": 1, "loc": [-0.49, 0.27], "label": "room"},
-	{"id": 2, "loc": [1.7, -0.58], "label": "room"},
-	{"id": 3, "loc": [3.44, -1.95], "label": "room"},
-	{"id": 4, "loc": [2.9, -4.44], "label": "hallway"},
-	{"id": 5, "loc": [0.64, -3.60], "label": "hallway"},
-	{"id": 6, "loc": [-1.34, -2.51], "label": "hallway"}
-]
+## OBSERVATION
+{
+  "t": "13:15:45",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "chair",
+	  "bbox": [
+		0.25,
+		0.53,
+		0.20,
+		0.51
+	  ],
+	  "dist": 1.82
+	},
+	{
+	  "name": "person",
+	  "bbox": [
+		0.29,
+		0.52,
+		0.11,
+		0.22
+	  ],
+	  "dist": 0.62
+	}
+  ],
+  "nav": {
+	"current_wp": 1,
+	"waypoints": [
+	  {
+		"id": 1,
+		"label": "room"
+	  },
+	  {
+		"id": 2,
+		"label": "room"
+	  },
+	  {
+		"id": 3,
+		"label": "room"
+	  },
+	  {
+		"id": 4,
+		"label": "hallway"
+	  },
+	  {
+		"id": 5,
+		"label": "hallway"
+	  },
+	  {
+		"id": 6,
+		"label": "hallway"
+	  }
+	]
+  }
+}
 
 ## OUTPUT
 No new instruction is received, but there is a paused task (3) recently. The robot should resume this task.

@@ -57,7 +57,7 @@ save_map:
 	ros2 service call /slam_toolbox/serialize_map slam_toolbox/SerializePoseGraph "{filename: '$(CURDIR)/src/typego_sdk/resource/$(FILE)'}"
 
 clog:
-	echo -n > ./src/typego/resource/s0_log.txt
 	echo -n > ./src/typego/resource/s1_log.txt
-	echo -n > ./src/typego/resource/s2_log.txt
+	echo -n > ./src/typego/resource/s2s_log.txt
+	echo -n > ./src/typego/resource/s2d_log.txt
 	echo -n > ./src/typego/resource/chat_log.txt
