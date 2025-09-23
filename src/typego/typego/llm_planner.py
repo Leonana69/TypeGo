@@ -78,11 +78,14 @@ class LLMPlanner():
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
-        prompt = self.s2d_prompt.format(user_guidelines=self.s2d_user_guidelines,
-                                            example_plans=self.s2d_examples,
-                                            user_instruction=inst,
-                                            robot_skills=robot_skills,
-                                            observation=observation)
+        prompt = self.s2d_prompt.format(
+            robot_skills=robot_skills,
+            example_plans=self.s2d_examples,
+            task_history="",
+            user_instruction=inst,
+            user_guidelines=self.s2d_user_guidelines,
+            observation=observation
+        )
 
         # print_t(f"[S2D] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
         ret = self.llm.request(prompt, model_type)

@@ -229,6 +229,12 @@ class S2DPlan:
         })
     
     def get_s2s_input(self) -> str:
+        matching_actions = []
+        for action in reversed(self.s2s_history):
+            if action.state == self.current_state:
+                matching_actions.insert(0, str(action))
+            else:
+                break
         info = {
             "local_data": self.local_data,
             "global_trans": self.global_trans,
@@ -236,7 +242,7 @@ class S2DPlan:
                 self.current_state: self.states[self.current_state],
             },
 
-            "action_history": [str(action) for action in self.s2s_history if action.is_finished()]
+            "action_history": matching_actions
         }
         return json.dumps(info, indent=4)
 

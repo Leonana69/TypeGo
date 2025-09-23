@@ -11,6 +11,8 @@ from enum import Enum
 from scipy.spatial.transform import Rotation as R
 from functools import wraps
 
+DEBUG_MODE = False
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseStamped
@@ -301,15 +303,18 @@ class Go2Action:
 
         if self.event is None:
             raise ValueError("Go2Action event is not initialized. Please call Go2Wrapper.start() first.")
-    
-    def execute(self):
+        
+    def run(self, finish_callback: callable = None):
+        threading.Thread(target=self.execute, args=(finish_callback,)).start()
+
+    def execute(self, finish_callback: callable = None):
         """
         Execute actions at 100Hz, and check for stop events frequently.
         """
         for action, duration in self.actions:
             if self.event.is_set():
                 print_t("[Go2] Action stopped.")
-                return
+                break
 
             # print_t(f"[Go2] Executing action: {action.__name__ if hasattr(action, '__name__') else action} for {duration:.2f}s")
             action()
@@ -317,11 +322,10 @@ class Go2Action:
             start_time = time.time()
             while time.time() - start_time < duration:
                 if self.event.is_set():
-                    print_t("[Go2] Action interrupted during execution.")
-                    return
+                    break
                 time.sleep(0.01)
-
-        # print_t("[Go2] Action execution completed.")
+        if finish_callback:
+            finish_callback()
         
 class Go2StateEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -356,16 +360,16 @@ def go2action(feature_str = None):
         
         @wraps(func)
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
-            print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
+            print(f"> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
             if not self.action_lock.acquire(timeout=0.1):
-                self.stop_action()
-                self.stop_action_event.set()
+                # self.stop_action()
+                self.stop_event.set()
                 while not self.action_lock.acquire(timeout=0.1):
                     if not self.running:
                         return
-                self.stop_action_event.clear()
+                self.stop_event.clear()
             else:
-                self.stop_action_event.clear()
+                self.stop_event.clear()
 
             print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
@@ -397,13 +401,13 @@ def go2action(feature_str = None):
             print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
             if not self.action_lock.acquire(timeout=0.1):
                 self.stop_action()
-                self.stop_action_event.set()
+                self.stop_event.set()
                 while not self.action_lock.acquire(timeout=0.1):
                     if not self.running:
                         return
-                self.stop_action_event.clear()
+                self.stop_event.clear()
             else:
-                self.stop_action_event.clear()
+                self.stop_event.clear()
 
             print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
@@ -432,19 +436,24 @@ class Go2Wrapper(RobotWrapper):
         self.running = True
         self.active_program = None
         self.action_lock = threading.RLock()
-        self.stop_action_event = threading.Event()
-        Go2Action.event = self.stop_action_event
+        self.stop_event = threading.Event()
+        Go2Action.event = self.stop_event
 
         # Connect to the robot control API
         extra = self.robot_info.extra
         if "url" not in extra:
             raise ValueError("Control url must be provided in extra")
         self.robot_url = extra["url"]
-        response = requests.get(self.robot_url)
-        if response.status_code != 200:
-            raise RuntimeError(f"[Go2] Failed to connect to robot at {self.robot_url}")
-        else:
-            print_t(f"[Go2] {response.text}")
+        try:
+            response = requests.get(self.robot_url)
+            if response.status_code != 200:
+                raise RuntimeError(f"[Go2] Robot init connection failed: {response.status_code}, {response.text}")
+            else:
+                print_t(f"[Go2] {response.text}")
+        except Exception as e:
+            if not DEBUG_MODE:
+                print_t(f"[Go2] Error connecting to robot at {self.robot_url}: {e}")
+                raise RuntimeError(f"[Go2] Failed to connect to robot at {self.robot_url}")
 
         print_t(self.registry.get_skill_list())
 
@@ -521,10 +530,7 @@ class Go2Wrapper(RobotWrapper):
         self.function_thread.start()
         self.command_thread.start()
         self.observation.start()
-
-        time.sleep(1)
-        self.nod()
-
+        print_t("[Go2] Robot is ready.")
         return True
 
     @overrides
@@ -537,6 +543,7 @@ class Go2Wrapper(RobotWrapper):
             rclpy.shutdown()
             self.spin_thread.join()
 
+    # TODO: fix this
     def stop_action(self):
         print_t("[Go2] Stopping action...")
         self._go2_command("stop")
@@ -606,7 +613,8 @@ class Go2Wrapper(RobotWrapper):
                     if result.status_code != 200:
                         print_t(f"[Go2] Command failed: {result.status_code}, {result.text}")
                 except requests.RequestException as e:
-                    print_t(f"[Go2] Command failed: {e}")
+                    if not DEBUG_MODE:
+                        print_t(f"[Go2] Command send failed: {e}")
 
             # Periodic euler resend if active
             if (current_euler != 0.0).any() and (time.time() - last_euler_sent > 0.5):
@@ -652,7 +660,7 @@ class Go2Wrapper(RobotWrapper):
         body_yaw = 0.0
 
         begin = time.time()
-        while not self.stop_action_event.is_set() and time.time() - begin < 4.0:
+        while not self.stop_event.is_set() and time.time() - begin < 4.0:
             start_time = time.time()
             info = self.get_obj_info(object)
 
@@ -678,7 +686,7 @@ class Go2Wrapper(RobotWrapper):
 
             self._go2_command("euler", roll=0, pitch=round(float(body_pitch), 3), yaw=round(float(body_yaw), 3))
             time.sleep(max(0, 0.1 - (time.time() - start_time)))
-
+        self._go2_command("euler", roll=0, pitch=0, yaw=0)
         return True
 
     # @go2action("require_standing, trigger_movement")
@@ -694,7 +702,7 @@ class Go2Wrapper(RobotWrapper):
         target_x = initial_x + dx * math.cos(initial_yaw) - dy * math.sin(initial_yaw)
         target_y = initial_y + dx * math.sin(initial_yaw) + dy * math.cos(initial_yaw)
 
-        while not self.stop_action_event.is_set():
+        while not self.stop_event.is_set():
             start_time = time.time()
             current_x = self.observation.position[0]
             current_y = self.observation.position[1]
@@ -722,27 +730,23 @@ class Go2Wrapper(RobotWrapper):
     @go2action
     @overrides
     def move_forward(self, distance: float) -> bool:
-        print_t(f"[Go2] Moving forward {distance} meters")
         return self._move(distance, 0.0)
     
     @go2action
     @overrides
     def move_back(self, distance: float) -> bool:
-        print_t(f"[Go2] Moving back {distance} meters")
         return self._move(-distance, 0.0)
     
     @robot_skill("nav", description="Continous movement and rotation with speed. Max speed +-1m/s, max turning +-0.5 rad/s. Positive value to move forward and clockwise/turn left.")
     @go2action
     def nav(self, vx: float, vyaw: float) -> bool:
-        print_t(f"[Go2] Nav with speed {vx} m/s and yaw {vyaw} rad/s")
         return self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
     
     @robot_skill("search", description="Rotate to find a specific object when it's not in current view.")
     @go2action
     def search(self, object: str) -> bool:
-        print_t(f"[Go2] Searching for {object}")
         for _ in range(12):
-            if self.stop_action_event.is_set():
+            if self.stop_event.is_set():
                 return False
             if self.get_obj_info(object) is not None:
                 return True
@@ -752,11 +756,11 @@ class Go2Wrapper(RobotWrapper):
     @robot_skill("follow", description="Follow a specific object.")
     @go2action
     def follow(self, object: str) -> bool:
-        print_t(f"[Go2] Following {object}")
         last_seen_cx = 0.5
         current_pitch = 0.2
         self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
-        while not self.stop_action_event.is_set():
+        timer = time.time()
+        while not self.stop_event.is_set() and time.time() - timer < 30.0:
             info = self.get_obj_info(object)
             if info is not None:
                 last_seen_cx = info.cx
@@ -791,25 +795,21 @@ class Go2Wrapper(RobotWrapper):
     @go2action
     @overrides
     def move_left(self, distance: float) -> bool:
-        print_t(f"[Go2] Moving left {distance} meters")
         return self._move(0.0, distance)
     
     @go2action
     @overrides
     def move_right(self, distance: float) -> bool:
-        print_t(f"[Go2] Moving right {distance} meters")
         return self._move(0.0, -distance)
 
     @go2action
     @overrides
     def turn_left(self, deg: float) -> bool:
-        print_t(f"[Go2] Turning left {deg} degrees")
         return self._rotate(deg)
 
     @go2action
     @overrides
     def turn_right(self, deg: float) -> bool:
-        print_t(f"[Go2] Turning right {deg} degrees")
         return self._rotate(-deg)
     
     def _rotate(self, deg: float) -> bool:
@@ -823,7 +823,7 @@ class Go2Wrapper(RobotWrapper):
         accumulated_angle = 0.0
         previous_yaw = initial_yaw
 
-        while not self.stop_action_event.is_set():
+        while not self.stop_event.is_set():
             start_time = time.time()
             current_yaw = self.observation.orientation[2]
             yaw_diff = current_yaw - previous_yaw
@@ -856,36 +856,39 @@ class Go2Wrapper(RobotWrapper):
     @robot_skill("nod", description="Nod the robot's head.")
     @go2action
     def nod(self) -> bool:
-        """
-        Nods the robot's head.
-        """
-        print("-> Nod")
         actions = []
-        for _ in range(2):  # 2 up/down cycles = 4 total motions
+        for _ in range(2):
             actions.append((lambda: self._go2_command("euler", roll=0, pitch=-0.4, yaw=0), 0.3))
             actions.append((lambda: self._go2_command("euler", roll=0, pitch=0.1, yaw=0), 0.3))
         go2_action = Go2Action(actions)
-        go2_action.execute()
-        self._go2_command("euler", roll=0, pitch=0, yaw=0)
+        go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         return True
 
-    @robot_skill("wiggle", description="Wiggle the robot's limbs.")
+    @robot_skill("wiggle", description="Wiggle the robot's body.")
     @go2action
     def wiggle(self) -> bool:
-        print_t(f"[Go2] Wiggling...")
         actions = []
-        for _ in range(2):  # 2 up/down cycles = 4 total motions
+        for _ in range(2):
             actions.append((lambda: self._go2_command("euler", roll=0.6, pitch=0.0, yaw=0), 0.5))
             actions.append((lambda: self._go2_command("euler", roll=-0.6, pitch=0.0, yaw=0), 0.5))
         go2_action = Go2Action(actions)
-        go2_action.execute()
-        self._go2_command("euler", roll=0, pitch=0, yaw=0)
+        go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
+        return True
+    
+    @robot_skill("wagging", description="Wagging the robot's tail.")
+    @go2action
+    def wagging(self) -> bool:
+        actions = []
+        for _ in range(2):
+            actions.append((lambda: self._go2_command("euler", roll=0.0, pitch=0.0, yaw=0.3), 0.5))
+            actions.append((lambda: self._go2_command("euler", roll=0.0, pitch=0.0, yaw=-0.3), 0.5))
+        go2_action = Go2Action(actions)
+        go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         return True
     
     @robot_skill("stretch", description="Stretch the robot's limbs.")
     @go2action
     def stretch(self) -> bool:
-        print_t(f"[Go2] Stretching...")
         self._go2_command("stretch")
         time.sleep(2.0)
         return True
@@ -893,23 +896,18 @@ class Go2Wrapper(RobotWrapper):
     @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")
     @go2action
     def look_up(self) -> bool:
-        """
-        Looks up by adjusting the robot's head pitch.
-        """
-        print_t("-> Look up")
         actions = [
             (lambda: self._go2_command("euler", roll=0, pitch=-0.4, yaw=0), 0.2)
             for _ in range(3)
         ]
         go2_action = Go2Action(actions)
-        go2_action.execute()
+        go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         print_t("-> Look up end")
         return True
     
     @robot_skill("goto_waypoint", description="Go to a specific waypoint")
     @go2action
     def goto_waypoint(self, id: int) -> bool:
-        print(f"-> Go to waypoint {id}")
         wp = self.observation.slam_map.get_waypoint(id)
         if wp is None:
             print_t(f"Waypoint {id} not found")
@@ -962,7 +960,7 @@ class Go2Wrapper(RobotWrapper):
 
         start_time = time.time()
         while not done_event.is_set():
-            if self.stop_action_event.is_set() or time.time() - start_time > timeout_sec:
+            if self.stop_event.is_set() or time.time() - start_time > timeout_sec:
                 print_t("Navigation: Stopped")
                 break
             time.sleep(0.01)

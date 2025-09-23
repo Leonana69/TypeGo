@@ -1,15 +1,21 @@
 # EXAMPLE 1
+## TASK HISTORY
+Task list: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"}
+]
+
+Plan for in-progress task:
+None
+
 ## NEW USER INSTRUCTION
 Check if there is any person in the hallway, if so take a picture of him and report the message. Go back to the room after that.
 
-Instruction History: [
-	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
-	{"id": "2", "start": "12:09:51", "end": "N/A", "content": "Dance for me.", "status": "in_progress"}
-]
+## GUIDELINES
+1. You can look at the most interesting object in the view if you don't have any other tasks.
 
 ## OBSERVATION
 {
-  "t": "16:09:13",
+  "t": "12:10:13",
   "robot": {
     "posture": "standing"
   },
@@ -85,27 +91,32 @@ Instruction History: [
 }
 
 ## OUTPUT
-A new instruction is received, so the in-progress task (2) will be stopped since the new instruction does not explicitly say the in-progress task should be resumed. The robot will start executing the new task.
+A new instruction is received and there is no in-progress task, so the robot can immediately start executing the new task.
 
 The robot is currently at waypoint 1, labeled "room", and needs to search for any person in the hallway. There are no people in the immediate scene description, so the robot should navigate through the waypoints labeled "hallway" to look for a person. If a person is detected, the robot must stop, take a picture, and report the message. After that, or if no person is found at all, the robot should return to its original waypoint (1).
 
 To implement this behavior, we define:
 - `targets`: a list of hallway waypoints to visit.
 - `start`: the robot’s current location (1).
+- `index`: to track which waypoint in `targets` the robot is currently heading to.
+- `next`: the next waypoint to go to, initialized to the first in `targets`.
 - A state machine:
   - `GOTO_NEXT` to visit waypoints in sequence and update `next`.
   - `SEE_PERSON` as a global condition when a person is seen.
   - `RETURN_HOME` and `DONE` to wrap up the task.
+- Initial state is `GOTO_NEXT`.
 
 ```json
 {
-	"task": "stop(2);new()",
+	"task": "new()",
 	"variables": {
 		"targets": [2, 3, 4, 7, 8, 12],
 		"start": 1,
 		"index": 0,
 		"next": 2
 	},
+
+	"initial_state": "GOTO_NEXT",
 
 	"global_trans": [
 		"SEE_PERSON: see any person"
@@ -119,35 +130,62 @@ To implement this behavior, we define:
 		        "next": "targets[index] if index < len(targets) else None"
 		    },
 			"trans": [
-				"RETURN_HOME: next is null"
+				"RETURN_HOME: next is None"
 			]
 		},
 
-		"SEE_PERSON": {
-			"action": "take a picture, then report the message",
-			"trans": ["RETURN_HOME: always"]
-		},
+		"SEE_PERSON": "take a picture, then report the message -> RETURN_HOME",
 
-		"RETURN_HOME": {
-			"action": "go back to start",
-			"trans": ["DONE: always"]
-		}
+		"RETURN_HOME": "go back to start -> DONE"
 	}
 }
 ```
 
 # EXAMPLE 2
-## NEW USER INSTRUCTION
-Play with the person for 3mins.
-
-Instruction History: [
+## TASK HISTORY
+Task list: [
 	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
-	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"}
+	{"id": "2", "start": "12:10:38", "end": "None", "content": "Go to the other side of the room and find an apple and take a picture of it.", "status": "in-progress"}
 ]
+
+Plan for in-progress task:
+{
+	"variables": {
+		"start": 1
+	},
+
+	"current_state": "SEARCH_APPLE",
+
+	"global_trans": [
+		"SEE_APPLE: see an apple"
+	],
+
+	"states": {
+		"GOTO_WP2": "go to waypoint 2 -> SEARCH_APPLE",
+
+		"SEARCH_APPLE": {
+			"action": "look around for an apple",
+			"trans": [
+				"SEE_APPLE: see an apple",
+				"RETURN_HOME: searched all directions"
+			]
+		},
+
+		"SEE_APPLE": "approach and take a picture of the apple, then report the message -> RETURN_HOME",
+
+		"RETURN_HOME": "go back to start -> DONE"
+	}
+}
+
+## NEW USER INSTRUCTION
+Banana also works.
+
+## GUIDELINES
+1. You can look at the most interesting object in the view if you don't have any other tasks.
 
 ## OBSERVATION
 {
-  "t": "16:10:23",
+  "t": "12:11:23",
   "robot": {
 	"posture": "standing"
   },
@@ -174,7 +212,7 @@ Instruction History: [
 	}
   ],
   "nav": {
-	"current_wp": 1,
+	"current_wp": 2,
 	"waypoints": [
 	  {
 		"id": 1,
@@ -205,49 +243,68 @@ Instruction History: [
 }
 
 ## OUTPUT
-A new instruction is received and there is no in-progress task, so the robot can immediately start executing the new task.
-
-The user asked the robot to play with the person for 3 minutes. Based on the scene description, a person is detected nearby at a distance of only 0.62 meters. The robot does not need to search for the person—it can immediately engage.
-
-The behavior plan involves:
-- Starting in an `INIT` state and transitioning into `ENGAGE_PERSON`.
-- In `ENGAGE_PERSON`, the robot walks to the person and says hello, and we optionally mark `person_found = true` for future extensibility.
-- In `PLAY`, the robot plays with the person (dancing or following).
-- After 3 minutes have passed, the robot transitions to `DONE`.
-
-We assume the agent system can monitor elapsed time since task start to trigger the `"3mins past since the task started"` transition condition.
+A new instruction is received and the in-progress task (2) is still ongoing. The new instruction modifies the original task by expanding the search criteria from just "apple" to "apple or banana". Therefore, the robot should override the current task to accommodate this change. The new initial_state should be set to "SEARCH_APPLE_BANANA" to continue searching for the specified fruits.
 
 ```json
 {
-	"task": "new()",
-	"variables": {},
-	"global_trans": [],
+	"task": "override(2)",
+	"variables": {
+		"start": 1
+	},
+
+	"initial_state": "SEARCH_APPLE_BANANA",
+
+	"global_trans": [
+		"SEE_APPLE: see an apple",
+		"SEE_BANANA: see a banana"
+	],
 
 	"states": {
-		"ENGAGE_PERSON": {
-			"action": "walk to person, say hello",
-			"trans": ["PLAY: always"]
+		"GOTO_WP2": "go to waypoint 2 -> SEARCH_APPLE_BANANA",
+
+		"SEARCH_APPLE_BANANA": {
+			"action": "look around for an apple or banana",
+			"trans": [
+				"SEE_APPLE: see an apple",
+				"SEE_BANANA: see a banana",
+				"RETURN_HOME: searched all directions"
+			]
 		},
 
-		"PLAY": {
-			"action": "do a fun dance or follow the person",
-			"trans": [
-				"DONE: 3mins past since the task started"
-			]
-		}
+		"SEE_APPLE": "approach and take a picture of the apple, then report the message -> RETURN_HOME",
+
+		"SEE_BANANA": "approach and take a picture of the banana, then report the message -> RETURN_HOME",
+
+		"RETURN_HOME": "go back to start -> DONE"
 	}
 }
 ```
 
 # EXAMPLE 3
+## TASK HISTORY
+Task list: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"},
+	{"id": "3", "start": "13:12:34", "end": "None", "content": "Play with the person for 5mins", "status": "in-progress"}
+]
+
+Plan for in-progress task:
+{
+	"variables": {
+		"begin": "13:12:34",
+	},
+	"current_state": "PLAY_WITH_PERSON",
+	"global_trans": [],
+	"states": {
+		"PLAY_WITH_PERSON": "Look at the person, wag tail or body, look at the interesting object near the person -> DONE if current time - begin > 5mins"
+	}
+}
+
 ## NEW USER INSTRUCTION
 None
 
-Instruction History: [
-	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
-	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"},
-	{"id": "3", "start": "13:12:34", "end": "13:14:46", "content": "Play with the person", "status": "paused"}
-]
+## GUIDELINES
+1. You can look at the most interesting object in the view if you don't have any other tasks.
 
 ## OBSERVATION
 {
@@ -309,10 +366,93 @@ Instruction History: [
 }
 
 ## OUTPUT
-No new instruction is received, but there is a paused task (3) recently. The robot should resume this task.
+No new instruction is received and the in-progress task (3) is still ongoing. The robot should continue executing the current task without any changes.
 
 ```json
 {
 	"task": "continue(3)"
+}
+```
+
+# EXAMPLE 4
+## TASK HISTORY
+Task list: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"},
+	{"id": "3", "start": "13:12:34", "end": "13:17:35", "content": "Play with the person for 5mins", "status": "success"}
+]
+
+Plan for in-progress task:
+None
+
+## NEW USER INSTRUCTION
+None
+
+## GUIDELINES
+1. You can should approach and play with the person if you don't have any other tasks.
+2. You prefer orange over other fruits.
+3. You can randomly lie down or turn around on the ground if you don't have any other tasks.
+
+## OBSERVATION
+{
+  "t": "13:18:25",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{
+	  "name": "chair",
+	  "bbox": [
+		0.25,
+		0.53,
+		0.20,
+		0.51
+	  ],
+	  "dist": 1.82
+	}
+  ],
+  "nav": {
+	"current_wp": 1,
+	"waypoints": [
+	  {
+		"id": 1,
+		"label": "room"
+	  },
+	  {
+		"id": 2,
+		"label": "room"
+	  },
+	  {
+		"id": 3,
+		"label": "room"
+	  },
+	  {
+		"id": 4,
+		"label": "hallway"
+	  },
+	  {
+		"id": 5,
+		"label": "hallway"
+	  },
+	  {
+		"id": 6,
+		"label": "hallway"
+	  }
+	]
+  }
+}
+
+## OUTPUT
+No new instruction is received and there is no in-progress task. The robot has just finished playing with the person and is currently standing in the room with no people or interesting objects in sight. Given the guidelines, the robot can choose to either lie down or turn around on the ground since there are no other tasks or stimuli present.
+
+```json
+{
+	"task": "new()",
+	"variables": {},
+	"initial_state": "RANDOM_ACTION",
+	"global_trans": [],
+	"states": {
+		"RANDOM_ACTION": "lie down or turn around on the ground -> DONE"
+	}
 }
 ```

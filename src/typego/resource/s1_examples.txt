@@ -9,9 +9,6 @@ Turn right.
   }
 }
 
-## SCENE
--
-
 ## OUTPUT
 turn_right(90)
 
@@ -59,9 +56,6 @@ Answer my question.
     "posture": "standing"
   }
 }
-
-## SCENE
--
 
 ## OUTPUT
 nod()
@@ -111,9 +105,6 @@ Take a photo.
     "posture": "standing"
   }
 }
-
-## SCENE
--
 
 ## OUTPUT
 take_picture()

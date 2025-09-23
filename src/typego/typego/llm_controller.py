@@ -79,10 +79,10 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        self.s0_loop_thread.start()
+        # self.s0_loop_thread.start()
         self.s1_loop_thread.start()
-        self.s2s_loop_thread.start()
-        self.s2d_loop_thread.start()
+        # self.s2s_loop_thread.start()
+        # self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
     def stop_controller(self):
@@ -92,10 +92,12 @@ class LLMController():
     def fetch_robot_pov(self) -> Optional[Image.Image]:
         obs = self.robot.observation
         if not obs:
+            print_t(f"[C] No observation available")
             return None
 
         process_result = obs.fetch_processed_result()
         if not process_result:
+            print_t(f"[C] No processed result available")
             return None
 
         image, yolo_results = process_result
@@ -164,18 +166,27 @@ class LLMController():
             new_inst = self.get_instruction(0)
             plan = self.planner.s1_plan(new_inst)
             print_t(f"[S1] Get plan: {plan}")
+            time.sleep(3.0)
+            self.robot.registry.execute("stand_up()")
 
-            # find_object_method = make_follow_object_method(self.robot)
-            # find_person = find_object_method.bind(object="sports ball")
-            # print(find_person.goal)
-            # method_engine = MethodEngine(find_person)
-            # result = method_engine.run()
-            # print(f"[S1] Method result: {result}")
-            # self.robot.registry.execute("nav(0.0, 0.0)")
+            ## TODO: make skills non-blocking
+            self.robot.registry.execute("wiggle()")
+            time.sleep(1.0)
+
+            find_object_method = make_follow_object_method(self.robot)
+            find_person = find_object_method.bind(object="sports ball")
+            print(find_person.goal)
+            method_engine = MethodEngine(find_person)
+            result = method_engine.run()
+            print(f"[S1] Method result: {result}")
+            self.robot.registry.execute("nav(0.0, 0.0)")
+            self.robot.registry.execute("look_object(person)")
 
             # use S2DPlan.default to handle a new task
             # S2DPlan.set_default()
             # self.robot.append_actions(plan)
+
+            ### TODO: spawn a new thread to do S2 planning
 
             # allow S2S to proceed
             self.s1_s2s_event.set()

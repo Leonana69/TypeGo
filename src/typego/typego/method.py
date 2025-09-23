@@ -262,7 +262,7 @@ def make_follow_object_method(robot: RobotWrapper) -> MethodSpec:
         name="follow_object",
         description="Follow the target object until timeout.",
         robot=robot,
-        goal={"object": "<name>", "max_dist": 1.5, "duration": 60.0},
+        goal={"object": "<name>", "max_dist": 1.5, "duration": 40.0},
         obs_keys=["t", "robot", "perception"],
         api=[  # skills only in this leaf method (you can add more)
             "follow"

@@ -6,6 +6,7 @@ stand_up() → stand up
 sit_down() → sit down
 orienting(object: str) → turn head toward object
 look_object(object: str) → fix gaze on object
+search(object: str) → look around for object
 nod() → nod head (acknowledge/answer)
 look_up() → tilt head up
 goto_waypoint(id: int) → go to waypoint by id
@@ -48,6 +49,8 @@ G) Sit / stand explicitly:
    - "sit" → sit_down()
    - "stand" → stand_up()
 H) Logging / chatty text without clear action → log("<short paraphrase>")
+I) Search:
+   - "find/look for/where is X" (object) → search("X")
 
 # WAYPOINT MATCH
 - If instruction mentions a waypoint label, choose the waypoint with exact label match if present.
@@ -55,7 +58,7 @@ H) Logging / chatty text without clear action → log("<short paraphrase>")
 - If multiple labels match, prefer the one exactly equal to the noun (case-insensitive).
 
 # OBJECT MATCH
-- If an object name is in SCENE Objects list, use its "name" string exactly.
+- If an object name is in OBSERVATION Perception list, use its "name" string exactly.
 - If not present, still use the user's noun as the object string.
 
 # SAFETY CLIPS
