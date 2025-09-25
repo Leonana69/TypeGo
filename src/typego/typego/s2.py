@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 import json, time
+import re
+from json import JSONEncoder
 
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
@@ -40,6 +42,55 @@ class ActionItem:
             self.end = time.time()
             self.status = STATUS_SUCCESS if result else STATUS_FAILED
 
+@dataclass
+class S2DPlanState:
+    name: str
+    action: str
+    update: dict
+    trans: list[str]
+
+    def __repr__(self):
+        return f"S2DPlanState(name={self.name}, action={self.action}, update={self.update}, trans={self.trans})"
+    
+    def to_dict(self):
+        return self._raw_content
+
+    def __init__(self, name: str, content: str | dict):
+        self.name = name
+        self._raw_content = content
+
+        if isinstance(content, str):
+            # Split once into "action" and "rest"
+            try:
+                action_part, rest = map(str.strip, content.split("->", 1))
+            except ValueError:
+                raise ValueError(f"Invalid content format: {content!r}")
+
+            self.action = action_part
+            self.update = {}
+
+            # Handle transitions with optional "if"
+            if "if" in rest:
+                target, condition = map(str.strip, rest.split("if", 1))
+                self.trans = [f"{target}: {condition}"]
+            else:
+                self.trans = [f"{rest}: always"]
+
+        elif isinstance(content, dict):
+            self.action = content.get("action", "")
+            self.update = content.get("update", {})
+            self.trans = list(content.get("trans", []))  # copy for safety
+
+        else:
+            raise TypeError(f"Unsupported content type: {type(content)}")
+
+class S2PlanEncoder(JSONEncoder):
+    """Custom JSON encoder for S2DPlanState class"""
+    def default(self, obj):
+        if isinstance(obj, S2DPlanState):
+            return obj.to_dict()
+        return super().default(obj)
+
 class S2DPlan:
     ID_COUNTER = 0
     HISTORY: dict[int, "S2DPlan"] = {}
@@ -48,10 +99,13 @@ class S2DPlan:
         self.id = S2DPlan.ID_COUNTER
         S2DPlan.ID_COUNTER += 1
 
-        self.local_data = plan_json.get("local_data", {})
+        self.variables = plan_json.get("variables", {})
         self.global_trans = plan_json.get("global_trans", [])
-        self.states = plan_json["states"]
-        self.current_state = "INIT"
+        self.states: dict[str, S2DPlanState] = {
+            name: S2DPlanState(name, state_content)
+            for name, state_content in plan_json["states"].items()
+        }
+        self.current_state = plan_json.get("initial_state", list(self.states.keys())[0])
 
         self.start_time = time.time()
         self.end_time = None
@@ -62,13 +116,6 @@ class S2DPlan:
 
         S2DPlan.HISTORY[self.id] = self
         S2DPlan.CURRENT = self
-
-        after_init_states = self.states[self.current_state].get("trans", [])
-        for transition in after_init_states:
-            if transition.endswith(": always"):
-                self.transit(transition[:-8])
-            else:
-                raise ValueError(f"Invalid transition after initialization: {transition}")
     
     @classmethod
     def init_default(cls):
@@ -77,19 +124,13 @@ class S2DPlan:
         default_plan.id = 0
         cls.ID_COUNTER = 1
 
-        default_plan.local_data = {}
+        default_plan.variables = {}
         default_plan.global_trans = [
             "CHASE_BALL: see a sports ball"
         ]
         default_plan.states = {
-            "IDLE": {
-                "action": None,
-                "trans": []
-            },
-            "CHASE_BALL": {
-                "action": "follow the sports ball",
-                "trans": ["IDLE: always"]
-            }
+            "IDLE": S2DPlanState("IDLE", "standby, wait for instructions -> IDLE"),
+            "CHASE_BALL": S2DPlanState("CHASE_BALL", "follow the sports ball -> IDLE")
         }
         default_plan.current_state = "IDLE"
 
@@ -102,7 +143,15 @@ class S2DPlan:
         cls.CURRENT = default_plan
 
     @classmethod
+    def stop_current_plan(cls):
+        if cls.CURRENT:
+            cls.CURRENT.status = STATUS_STOPPED
+            cls.CURRENT.end_time = time.time()
+            cls.CURRENT = None
+
+    @classmethod
     def set_default(cls):
+        cls.stop_current_plan()
         cls.CURRENT = cls.HISTORY.get(0)
         cls.CURRENT.status = STATUS_IN_PROGRESS
         cls.CURRENT.start_time = time.time()
@@ -111,48 +160,47 @@ class S2DPlan:
 
     @classmethod
     def parse(cls, instruct: str, llm_response: str):
+        def parse_task(task: str):
+            """
+            Parse a task string like 'override(5)', 'pause(3)', or 'continue(10)'.
+            Returns (command: str, task_id: int).
+            Raises ValueError if format is invalid.
+            """
+            m = re.fullmatch(r"([a-zA-Z_]+)\((\d*)\)", task.strip())
+            if not m:
+                raise ValueError(f"Malformed action: {task} (expected format 'command(number)')")
+
+            command = m.group(1)
+            inner = m.group(2)
+            task_id = int(inner) if inner else None
+            return command, task_id
         try:
             json_content = llm_response.split("```json", 1)[1].rsplit("```", 1)[0]
             plan_json = json.loads(json_content)
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {e}")
 
-        acts = plan_json.get("instruction_actions", "").split(";")
-        for act in acts:
-            act = act.strip()
-            if not act:
-                continue
+        command, task_id = parse_task(plan_json.get("task", "").strip())  # validate format
 
-            if act.startswith("stop("):
-                task_id = int(act[5:-1].strip())
-                plan = cls.HISTORY.get(task_id)
-                if plan:
-                    plan.status = STATUS_STOPPED
-                    plan.end_time = time.time()
-                    cls.CURRENT = None
+        if command == "new":
+            cls.stop_current_plan()
+            return cls(instruct, plan_json)
+        elif command == "stop":
+            cls.stop_current_plan()
+            cls.set_default()
+            return cls.CURRENT
+        elif task_id is None:
+            raise ValueError("Task ID must be provided for continue commands.")
 
-            elif act.startswith("continue("):
-                task_id = int(act[9:-1].strip())
-                plan = cls.HISTORY.get(task_id)
-                if plan:
-                    plan.status = STATUS_IN_PROGRESS
-                    plan.start_time = time.time()
-                    plan.end_time = None
-                    cls.CURRENT = plan
-
-            elif act.startswith("pause("):
-                task_id = int(act[6:-1].strip())
-                plan = cls.HISTORY.get(task_id)
-                if plan:
-                    plan.status = STATUS_PAUSED
-                    plan.end_time = time.time()
-                    cls.CURRENT = None
-
-            elif act.startswith("new("):
-                return cls(instruct, plan_json)
-
-            else:
-                raise ValueError(f"Unknown action: {act}")
+        if command == "continue":
+            plan = cls.HISTORY.get(task_id)
+            if plan and plan.status != STATUS_IN_PROGRESS:
+                plan.status = STATUS_IN_PROGRESS
+                plan.end_time = None
+                cls.CURRENT = plan
+                return plan
+        else:
+            raise ValueError(f"Unknown command: {command}")
 
     @classmethod
     def get_history_sorted_by_time(cls, after_time: float = None):
@@ -165,14 +213,14 @@ class S2DPlan:
         return self.current_state
 
     def transit(self, new_state: str):
-        if new_state not in self.states:
+        if new_state not in self.states and new_state != "DONE":
             raise ValueError(f"Invalid state: {new_state}")
         
         if self.current_state == new_state:
+            self.update_local_data()
             return
         
         self.current_state = new_state
-        self.update_local_data()
 
         if new_state == "DONE":
             self.status = STATUS_SUCCESS
@@ -211,10 +259,10 @@ class S2DPlan:
                 break
 
     def update_local_data(self):
-        updates = self.states[self.current_state].get("update", {})
+        updates = self.states[self.current_state].update
         for key, expr in updates.items():
             try:
-                self.local_data[key] = eval(expr, {}, self.local_data.copy())
+                self.variables[key] = eval(expr, {}, self.variables.copy())
             except Exception as e:
                 print(f"Failed to evaluate update for key '{key}': {expr}")
                 raise e
@@ -228,6 +276,25 @@ class S2DPlan:
             "status": self.status
         })
     
+    @classmethod
+    def get_s2d_input(cls) -> str:
+        rslt = "Task list: \n"
+        rslt += str(cls.get_history_sorted_by_time())
+        rslt += "\n\nPlan for in-progress task:\n"
+
+        if not cls.CURRENT:
+            return rslt + "None\n"
+        else:
+            info = {
+                "variables": cls.CURRENT.variables,
+                "global_trans": cls.CURRENT.global_trans,
+                "current_state": cls.CURRENT.current_state,
+                "states": cls.CURRENT.states
+            }
+
+            rslt += json.dumps(info, indent=4, cls=S2PlanEncoder)
+        return rslt
+
     def get_s2s_input(self) -> str:
         matching_actions = []
         for action in reversed(self.s2s_history):
@@ -236,7 +303,7 @@ class S2DPlan:
             else:
                 break
         info = {
-            "local_data": self.local_data,
+            "variables": self.variables,
             "global_trans": self.global_trans,
             "current_state": {
                 self.current_state: self.states[self.current_state],
@@ -249,23 +316,17 @@ class S2DPlan:
 test_response = """
 ```json
 {
-	"instruction_actions": "new()",
-	"local_data": {
+	"task": "new()",
+	"variables": {
         "current_index": 0,
         "target_waypoints": [1, 2, 3],
         "next_waypoint": 1
     },
 	"global_trans": [],
+    "initial_state": "ENGAGE_PERSON",
 
 	"states": {
-		"INIT": {
-			"trans": ["ENGAGE_PERSON: always"]
-		},
-
-		"ENGAGE_PERSON": {
-			"action": "walk to person, say hello",
-			"trans": ["PLAY: always"]
-		},
+		"ENGAGE_PERSON": "walk to person, say hello -> PLAY",
 
 		"PLAY": {
 			"action": "do a fun dance or follow the person",
@@ -276,30 +337,29 @@ test_response = """
 			"trans": [
 				"DONE: current_index >= 3"
 			]
-		},
-
-		"DONE": {}
+		}
 	}
 }
 ```
 """
 def test_s2_plan():
-    # plan = S2DPlan.parse("Play with the person for 3 minutes", test_response)
-    # print(plan.get_current_state())
-    # plan.transit("PLAY")
-    # print(plan.local_data)
-    # plan.transit("PLAY")
-    # print(plan.local_data)
-    # plan.transit("PLAY")
-    # print(plan.local_data)
+    plan = S2DPlan.parse("Play with the person for 3 minutes", test_response)
 
-    # plan.transit("DONE")
+    print(plan)
+
+    print(plan.get_current_state())
+    plan.transit("PLAY")
+    plan.transit("PLAY")
+
+    print(plan.get_current_state())
+
+    plan.transit("DONE")
     # assert plan.get_current_state() == "DONE"
     # assert plan.status == STATUS_SUCCESS
 
     # plan = S2DPlan.parse("Play with the person for 2 minutes", test_response)
     # print(S2DPlan.get_history_sorted_by_time())
-    S2DPlan.init_default()
-    print(S2DPlan.get_history_sorted_by_time())
+    # S2DPlan.init_default()
+    print(S2DPlan.get_s2d_input())
 
 # test_s2_plan()

@@ -16,10 +16,9 @@ You are a planner for systems with a robot dog. You should reason about the curr
 The output should consider carefully the current context, including the user instruction, observation, and the existing tasks.
 Starts with the chain-of-thought reasoning then a JSON object. The json object should contain:
 - `task`: A string that describes the actions to take for the current instruction history list, such as "stop(2);new()" for stopping the current task (2) and starting a new one or "continue(1)" for continuing the current in-progress/paused task (1). The available actions are:
-  - `new()`: Start a new task.
-  - `continue(<task_id>)`: Continue the task with the given ID. Only continue a finished task if the user explicitly asks to resume it, otherwise you should only continue the current in-progress/paused task. Also, in this case, you can finish generation without the rest fields.
-  - `override(<task_id>)`: Override the task with the given ID. This is used when the user instruction modifies or can be merged with the current in-progress task.
-- initial_state: If starting a new task or overriding an existing one, choose an appropriate initial state of the FSM according to the task requirement.
+  - `new()`: Start a new task. If there is an in-progress task, this would override it.
+  - `continue(<task_id>)`: Continue the task with the given ID. You can continue an in-progress/stopped task and in this case, you can finish generation without the rest fields. When you don't have a task to continue, you can just continue the default task with `0`.
+- initial_state: If you are overriding an existing task, choose an appropriate initial state of the FSM according to the task requirement. If starting a new task, choose the initial state based on the task requirement. If continuing an existing task, omit this field.
 - variables:
   - A dictionary storing task-specific variables.
   - These values can be read and updated by state transitions.
@@ -46,10 +45,10 @@ states:
       "<ACTION> -> <TARGET_STATE> [if <CONDITION>]".
     - Omit "if <CONDITION>" to default the condition to "always".
     - This expands to:
-        {
+        {{
           "action": "<ACTION>",
           "trans": ["<TARGET_STATE>: <CONDITION or 'always'>"]
-        }
+        }}
     - Use full object form when you need multiple transitions or an "update" block.
 
 # AVAILABLE ROBOT SKILLS

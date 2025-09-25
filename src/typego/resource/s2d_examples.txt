@@ -124,7 +124,7 @@ To implement this behavior, we define:
 
 	"states": {
 		"GOTO_NEXT": {
-			"action": "go to next",
+			"action": "go to next waypoint",
 			"update": {
 		        "index": "index + 1",
 		        "next": "targets[index] if index < len(targets) else None"
@@ -247,7 +247,7 @@ A new instruction is received and the in-progress task (2) is still ongoing. The
 
 ```json
 {
-	"task": "override(2)",
+	"task": "new()",
 	"variables": {
 		"start": 1
 	},

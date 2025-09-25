@@ -55,12 +55,14 @@ class LLMPlanner():
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
-        prompt = self.s2s_prompt.format(user_guidelines=self.s2s_user_guidelines,
-                                            robot_skills=robot_skills,
-                                            example_plans=self.s2s_examples,
-                                            instruction=inst if inst else "None",
-                                            current_plan=S2DPlan.CURRENT.get_s2s_input(),
-                                            observation=observation)
+        prompt = self.s2s_prompt.format(
+            robot_skills=robot_skills,
+            example_plans=self.s2s_examples,
+            instruction=inst if inst else "None",
+            user_guidelines=self.s2s_user_guidelines,
+            current_plan=S2DPlan.CURRENT.get_s2s_input(),
+            observation=observation
+        )
 
         # print_t(f"[S2S] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
         try:
@@ -69,7 +71,7 @@ class LLMPlanner():
             print_t(f"[S2S] Error during LLM request: {e}")
             return ""
         with open(CHAT_LOG_DIR + "s2s_log.txt", "a") as f:
-            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
@@ -81,7 +83,7 @@ class LLMPlanner():
         prompt = self.s2d_prompt.format(
             robot_skills=robot_skills,
             example_plans=self.s2d_examples,
-            task_history="",
+            task_history=S2DPlan.get_s2d_input(),
             user_instruction=inst,
             user_guidelines=self.s2d_user_guidelines,
             observation=observation
@@ -90,7 +92,7 @@ class LLMPlanner():
         # print_t(f"[S2D] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
         ret = self.llm.request(prompt, model_type)
         with open(CHAT_LOG_DIR + "s2d_log.txt", "a") as f:
-            remove_leading_prompt = prompt.split("# CURRENT TASK", 1)[-1]
+            remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret

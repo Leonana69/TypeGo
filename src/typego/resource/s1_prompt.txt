@@ -67,7 +67,7 @@ I) Search:
 # FEW-SHOT (concise)
 {example_plans}
 
-# CURRENT TASK
+# CURRENT CONTEXT
 ## NEW USER INSTRUCTION
 {user_instruction}
 

@@ -13,17 +13,10 @@ import inspect
 
 from typego.robot_info import RobotInfo
 from typego.yolo_client import ObjectInfo
-from typego.skill_item import SkillRegistry
+from typego.skill_item import SkillRegistry, SubSystem
 from typego_interface.msg import WayPointArray, WayPoint
 from typego.auto_lock_properties import auto_locked_properties
 from typego.frontend_message import publish
-
-class SubSystem(Enum):
-    NONE = auto()
-    DEFAULT = auto()
-    MOVEMENT = auto()
-    SOUND = auto()
-
 
 class RobotPosture(Enum):
     UNINIT = auto()
@@ -251,6 +244,8 @@ class RobotObservation(ABC):
         self.interval = 1.0 / rate
         self.robot_info = robot_info
 
+        self.running = False
+
         self._image = None
         self._depth = None
         self._orientation = np.array([0.0, 0.0, 0.0])
@@ -273,23 +268,25 @@ class RobotObservation(ABC):
     # Lifecycle
     # -------------------------
     def start(self):
-        if self._thread is not None:
-            return  # idempotent
+        if self.running:
+            raise RuntimeError("Observation is already running")
+        self.running = True
         self._stop_evt.clear()
-        self._start()
         self._thread = threading.Thread(target=self._run_loop_thread, daemon=True)
         self._thread.start()
+        self._start()
 
     def stop(self):
-        if self._thread is None:
-            return  # idempotent
+        if not self.running:
+            return
+        self.running = False
+        self._stop()
         self._stop_evt.set()
         # Wake the loop if it's sleeping:
         if self._loop is not None:
             self._loop.call_soon_threadsafe(lambda: None)
         self._thread.join()
         self._thread = None
-        self._stop()
 
     def _run_loop_thread(self):
         self._loop = asyncio.new_event_loop()
@@ -389,17 +386,25 @@ class RobotObservation(ABC):
         """Fetch the command from other sources."""
         return None
 
-def robot_skill(name: str, description: str = "", subsystem: SubSystem = SubSystem.NONE):
+# =========================
+# Decorator to tag skills
+# =========================
+def robot_skill(name: str, description: str = "",
+                subsystem: SubSystem = SubSystem.DEFAULT):
     def deco(fn):
         sig = inspect.signature(fn)
         params = {
-            name: param.annotation
-            for name, param in sig.parameters.items()
-            if name != "self" and param.annotation != inspect._empty
+            n: p.annotation
+            for n, p in sig.parameters.items()
+            if n != "self" and p.annotation != inspect._empty
         }
         setattr(fn, "_skill_name", name)
         setattr(fn, "_skill_description", description)
         setattr(fn, "_skill_params", params)
+        setattr(fn, "_skill_subsystem", subsystem)
+        # Record whether skill accepts control events explicitly
+        fn.__accepts_stop__  = "stop_event"  in sig.parameters
+        fn.__accepts_pause__ = "pause_event" in sig.parameters
         return fn
     return deco
 
@@ -411,21 +416,16 @@ class RobotWrapper(ABC):
         self.registry = SkillRegistry()
         self._auto_register_skills()
 
+        self.running = False
+
     def _auto_register_skills(self):
-        """
-        Find methods tagged with @skill on any class in the MRO, then register
-        the *bound override* from this instance. Subclasses need not re-decorate.
-        """
-        # Map skill name -> (method_name_on_class, description)
-        declared_skills: dict[str, tuple[str, str]] = {}
+        declared_skills: dict[str, tuple[str, str, dict, SubSystem]] = {}
 
         for cls in self.__class__.mro():
             for name, obj in cls.__dict__.items():
-                # unwrap abstractmethod / function wrappers to reach original
                 func = obj
                 if isinstance(func, (staticmethod, classmethod)):
                     func = func.__func__
-                # only plain callables
                 if not callable(func):
                     continue
                 sk_name = getattr(func, "_skill_name", None)
@@ -433,23 +433,53 @@ class RobotWrapper(ABC):
                     continue
                 sk_desc = getattr(func, "_skill_description", "")
                 sk_params = getattr(func, "_skill_params", {})
-                # first occurrence in MRO wins (nearest subclass)
-                declared_skills.setdefault(sk_name, (name, sk_desc, sk_params))
+                sk_subsys = getattr(func, "_skill_subsystem", SubSystem.DEFAULT)
+                declared_skills.setdefault(sk_name, (name, sk_desc, sk_params, sk_subsys))
 
-        for skill_name, (method_name, sk_desc, sk_params) in declared_skills.items():
-            # get the *bound* method from the instance (subclass override)
+        for skill_name, (method_name, sk_desc, sk_params, sk_subsys) in declared_skills.items():
             bound = getattr(self, method_name, None)
             if not callable(bound):
                 continue
-            # register; SkillRegistry will extract signature (ignores self)
-            self.registry.register(skill_name, description=sk_desc, params=sk_params)(bound)
+            self.registry.register(
+                skill_name, description=sk_desc, params=sk_params, subsystem=sk_subsys
+            )(bound)
+
+    # ---- Public control APIs (global or per-subsystem) ----
+    def pause_action(self, subsystem: Optional[SubSystem] = None) -> bool:
+        return self.registry.pause(subsystem)
+
+    def resume_action(self, subsystem: Optional[SubSystem] = None) -> bool:
+        return self.registry.resume(subsystem)
+
+    def stop_action(self, subsystem: Optional[SubSystem] = None) -> bool:
+        return self.registry.stop(subsystem)
+    
+    def start(self):
+        if self.running:
+            raise RuntimeError("Robot is already running")
+        self.running = True
+        self.observation.start()
+        self._start()
+
+    def stop(self):
+        if not self.running:
+            return
+        self.running = False
+        self._stop()
+        self.observation.stop()
 
     @abstractmethod
-    def start(self) -> bool:
+    def _start(self) -> bool:
+        """
+        Start the robot specific tasks.
+        """
         ...
 
     @abstractmethod
-    def stop(self):
+    def _stop(self):
+        """
+        Stop the robot specific tasks.
+        """
         ...
 
     @abstractmethod
@@ -503,7 +533,7 @@ class RobotWrapper(ABC):
         object_list = self.get_obj_list()
         return f"[{', '.join(str(obj) for obj in object_list)}]"
 
-    def get_obj_info(self, object_name: str) -> ObjectInfo | None:
+    def get_obj_info(self, object_name: str, reliable=False) -> ObjectInfo | None:
         object_name = object_name.strip('\'').strip('"').lower()
 
         for _ in range(3):
@@ -511,11 +541,13 @@ class RobotWrapper(ABC):
             for obj in object_list:
                 if obj.name.startswith(object_name):
                     return obj
+            if not reliable:
+                break
             time.sleep(0.2)
         return None
 
-    def is_visible(self, object_name: str) -> bool:
-        return self.get_obj_info(object_name) is not None
+    def is_visible(self, object_name: str, reliable=False) -> bool:
+        return self.get_obj_info(object_name, reliable) is not None
 
     def _get_object_attribute(self, object_name: str, attr: str) -> float | str:
         """Helper function to retrieve an object's attribute."""

@@ -6,11 +6,13 @@ from numpy import ndarray
 from PIL import Image
 from io import BytesIO
 import base64, json, requests
+from groq import Groq
 
 class ModelType(Enum):
     GPT4O = "gpt-4o"
     LOCAL_1B = "local-1b"
     PIE_8B = "pie-8b"
+    GROQ = "openai/gpt-oss-120b"
 
 EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
 CHAT_LOG_FILE = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/chat_log.txt"
@@ -18,7 +20,14 @@ CHAT_LOG_FILE = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/chat_
 class LLMWrapper:
     def __init__(self, temperature: float=0.0):
         self.temperature = temperature
-        self.gpt_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        if os.environ.get("OPENAI_API_KEY") is None and os.environ.get("GROQ_API_KEY") is None:
+            raise ValueError("Please set OPENAI_API_KEY or GROQ_API_KEY environment variable.")
+
+        if os.environ.get("OPENAI_API_KEY"):
+            self.gpt_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+        if os.environ.get("GROQ_API_KEY"):
+            self.groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
     def request(self, prompt, model_type: ModelType=ModelType.GPT4O, image: cv2.Mat | Image.Image | None=None) -> str | Stream[ChatCompletion.ChatCompletionChunk]:        
         content = [{
@@ -60,6 +69,14 @@ class LLMWrapper:
                 stream=False
             )
             response_text = response.output_text
+        elif model_type == ModelType.GROQ:
+            response = self.groq_client.chat.completions.create(
+                model=model_type.value,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.temperature,
+                stream=False
+            )
+            response_text = response.choices[0].message.content
         elif model_type == ModelType.PIE_8B:
             json_data = {
                 'prompt': prompt

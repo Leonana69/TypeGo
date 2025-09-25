@@ -9,6 +9,8 @@ from typego.yolo_client import YoloClient
 from typego.robot_info import RobotInfo
 from typego.robot_wrapper import RobotPosture
 from typego.method import make_find_object_method
+from typego.skill_item import SubSystem
+from typego.utils import print_t
 
 SKILL_EXECUTION_TIME = 2
 
@@ -68,16 +70,24 @@ class VirtualObservation(RobotObservation):
 class VirtualRobotWrapper(RobotWrapper):
     def __init__(self, robot_info: RobotInfo):
         super().__init__(robot_info, VirtualObservation(robot_info))
+        print_t(self.registry.get_skill_list())
 
     @overrides
-    def start(self) -> bool:
-        self.observation.start()
+    def _start(self) -> bool:
         self.observation.posture = RobotPosture.STANDING
+
+        # time.sleep(1)
+        # threading.Thread(target=self.registry.execute, args=('orienting("apple")',)).start()
+        # threading.Thread(target=self.registry.execute, args=('move_forward(1)',)).start()
+
+        # time.sleep(3)
+        # self.stop_action()
+
         return True
 
     @overrides
-    def stop(self):
-        self.observation.stop()
+    def _stop(self):
+        pass
 
     @overrides
     def move_forward(self, distance: float) -> bool:
@@ -115,8 +125,12 @@ class VirtualRobotWrapper(RobotWrapper):
         time.sleep(SKILL_EXECUTION_TIME)
         return True
     
-    @robot_skill("orienting", description="Orient the robot's head to an object.")
-    def orienting(self, object: str) -> bool:
-        print(f"-> Orienting head to {object}")
-        time.sleep(SKILL_EXECUTION_TIME)
+    @robot_skill("orienting", description="Orient the robot's head to an object.", subsystem=SubSystem.MOVEMENT)
+    def orienting(self, object: str, stop_event: threading.Event) -> bool:
+        print_t(f"-> Orienting head to {object}")
+        start_time = time.time()
+        while not stop_event.is_set() and time.time() - start_time < SKILL_EXECUTION_TIME:
+            print_t(f"   ... orienting head to {object} ...")
+            time.sleep(1)
+        print_t(f"-> Finished orienting head to {object}")
         return True

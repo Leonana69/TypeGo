@@ -5,6 +5,7 @@ from typing import Optional
 import time
 import threading
 
+from typego.llm_wrapper import ModelType
 from typego.yolo_client import YoloClient
 from typego.robot_wrapper import RobotPosture
 from typego.llm_planner import LLMPlanner
@@ -79,8 +80,8 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        # self.s0_loop_thread.start()
-        self.s1_loop_thread.start()
+        self.s0_loop_thread.start()
+        # self.s1_loop_thread.start()
         # self.s2s_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
@@ -119,7 +120,7 @@ class LLMController():
         s0events = [
             # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
             S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
-            S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move(-0.3, 0.0), 0, timeout=1.0),
+            S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move_back(0.3), 0, timeout=1.0),
         ]
 
         self.s0_in_progress_event: Optional[S0Event] = None
@@ -201,7 +202,7 @@ class LLMController():
             new_inst = self.get_instruction(1)
             if new_inst is None:
                 self.s1_s2s_event.wait(timeout=100)
-            plan = self.planner.s2s_plan(new_inst)
+            plan = self.planner.s2s_plan(new_inst, model_type=ModelType.GROQ)
 
             # pause if s0 is processing
             # if not self.s0_control.is_set():
@@ -228,8 +229,9 @@ class LLMController():
             self.s2d_event.clear()
 
             new_inst = self.get_instruction(2)
-            plan = self.planner.s2d_plan(new_inst)
-            print_t(f"[S2D] Plan: {plan}")
+            t1 = time.time()
+            plan = self.planner.s2d_plan(new_inst, model_type=ModelType.GROQ)
+            print_t(f"[S2D] Plan: {plan}, took {time.time() - t1:.2f}s")
 
             # process plan ...
             S2DPlan.parse(new_inst, plan)

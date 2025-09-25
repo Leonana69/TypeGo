@@ -32,6 +32,7 @@ from typego.yolo_client import YoloClient
 from typego.utils import print_t, ImageRecover
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
+from typego.skill_item import SubSystem
 
 GO2_CAM_K = np.array([[818.18507419, 0.0, 637.94628188],
                       [0.0, 815.32431463, 338.3480119],
@@ -101,7 +102,12 @@ class Go2Observation(RobotObservation):
             LaserScan,
             '/scan',
             self._scan_callback,
-            10
+            QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=10,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            )
         )
 
         # Subscribe to /voice_command
@@ -360,7 +366,7 @@ def go2action(feature_str = None):
         
         @wraps(func)
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
-            print(f"> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
+            print_t(f"> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
             if not self.action_lock.acquire(timeout=0.1):
                 # self.stop_action()
                 self.stop_event.set()
@@ -433,7 +439,6 @@ class Go2Wrapper(RobotWrapper):
         self.init_ros_node()
         super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node))
 
-        self.running = True
         self.active_program = None
         self.action_lock = threading.RLock()
         self.stop_event = threading.Event()
@@ -456,9 +461,6 @@ class Go2Wrapper(RobotWrapper):
                 raise RuntimeError(f"[Go2] Failed to connect to robot at {self.robot_url}")
 
         print_t(self.registry.get_skill_list())
-
-        self.function_queue = queue.Queue()
-        self.function_thread = threading.Thread(target=self.worker)
         
         self.command_queue = queue.Queue()
         self.command_thread = threading.Thread(target=self.command_sender)
@@ -494,6 +496,7 @@ class Go2Wrapper(RobotWrapper):
 
         self._go2_command("nav", **control)
 
+    # TODO: fix this
     def append_actions(self, actions: str):
         """
         Appends an action to the execution queue.
@@ -510,35 +513,31 @@ class Go2Wrapper(RobotWrapper):
             elif action == "stop()":
                 self.stop_action()
                 continue
-            self.function_queue.put(action)
+            # self.function_queue.put(action)
+            print_t(f"[Go2] Executing action: {action}")
 
-    def worker(self):
-        while self.running:
-            try:
-                action = self.function_queue.get(0.1)
-                print_t(f"[Go2] Executing action: {action}")
-                # self.active_program = MiniSpecProgram(self, None)
-                # self.active_program.parse(action)
-                # self.active_program.eval()
-                self.registry.execute(action)
-            except queue.Empty:
-                pass
+    # def worker(self):
+    #     while self.running:
+    #         try:
+    #             action = self.function_queue.get(0.1)
+    #             print_t(f"[Go2] Executing action: {action}")
+    #             # self.active_program = MiniSpecProgram(self, None)
+    #             # self.active_program.parse(action)
+    #             # self.active_program.eval()
+    #             self.registry.execute(action)
+    #         except queue.Empty:
+    #             pass
 
     @overrides
-    def start(self) -> bool:
+    def _start(self) -> bool:
         self.spin_thread.start()
-        self.function_thread.start()
         self.command_thread.start()
-        self.observation.start()
         print_t("[Go2] Robot is ready.")
         return True
 
     @overrides
-    def stop(self):
-        self.running = False
-        self.function_thread.join()
+    def _stop(self):
         self.command_thread.join()
-        self.observation.stop()
         if self.spin_thread is not None:
             rclpy.shutdown()
             self.spin_thread.join()
@@ -546,9 +545,9 @@ class Go2Wrapper(RobotWrapper):
     # TODO: fix this
     def stop_action(self):
         print_t("[Go2] Stopping action...")
+        self.stop_event.set()
         self._go2_command("stop")
-        if self.active_program:
-            self.active_program.stop()
+        self.stop_event.clear()
 
     def _go2_command(self, command: str, **args):
         # print_t(f"[Go2] Sending command: {command}, args: {args}")
@@ -582,6 +581,12 @@ class Go2Wrapper(RobotWrapper):
                 if control["command"] == "stop":
                     current_euler[:] = 0.0
                     last_euler_sent = 0.0
+                elif control["command"] == "nav" \
+                        and (control.get("vx", 0.0) == 0.0
+                        and control.get("vy", 0.0) == 0.0
+                        and control.get("vyaw", 0.0) == 0.0
+                        and (current_euler == 0.0).all()):
+                    control = {"command": "stop"}
             except queue.Empty:
                 # if control["command"] != "euler":
                 #     control = {"command": "stop"}
@@ -630,18 +635,19 @@ class Go2Wrapper(RobotWrapper):
                 except requests.RequestException as e:
                     print_t(f"[Go2] Periodic euler resend failed: {e}")
                 last_euler_sent = time.time()
+        print_t("[Go2] Command sender stopped.")
 
-    @robot_skill("stand_up", description="Make the robot stand up.")
+    @robot_skill("stand_up", description="Make the robot stand up.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
-    def stand_up(self):
+    def stand_up(self, stop_event: threading.Event):
         self._go2_command("stand_up")
 
-    @robot_skill("sit_down", description="Make the robot sit down.")
+    @robot_skill("sit_down", description="Make the robot sit down.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
     def sit_down(self):
         self._go2_command("stand_down")
 
-    @robot_skill("orienting", description="Orient the robot's head to an object.")
+    @robot_skill("orienting", description="Orient the robot's head to an object.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def orienting(self, object: str) -> bool:
         for _ in range(1):
@@ -653,7 +659,7 @@ class Go2Wrapper(RobotWrapper):
             
             self._rotate((0.5 - info.x) * 80)
 
-    @robot_skill("look_object", description="Look at a specific object")
+    @robot_skill("look_object", description="Look at a specific object", subsystem=SubSystem.MOVEMENT)
     @go2action
     def look_object(self, object: str) -> bool:
         body_pitch = self.observation.orientation[1]
@@ -667,8 +673,8 @@ class Go2Wrapper(RobotWrapper):
             if info is None:
                 return False
 
-            dx = 0.5 - info.x
-            dy = info.y - 0.5
+            dx = 0.5 - info.cx
+            dy = info.cy - 0.5
 
             # Dead zone in x-direction
             if abs(dx) > 0.05:
@@ -752,8 +758,8 @@ class Go2Wrapper(RobotWrapper):
                 return True
             self._rotate(30)
         return False
-    
-    @robot_skill("follow", description="Follow a specific object.")
+
+    @robot_skill("follow", description="Follow a specific object.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def follow(self, object: str) -> bool:
         last_seen_cx = 0.5
@@ -852,8 +858,8 @@ class Go2Wrapper(RobotWrapper):
         self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
         time.sleep(0.3)
         return True
-    
-    @robot_skill("nod", description="Nod the robot's head.")
+
+    @robot_skill("nod", description="Nod the robot's head.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def nod(self) -> bool:
         actions = []
@@ -864,7 +870,7 @@ class Go2Wrapper(RobotWrapper):
         go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         return True
 
-    @robot_skill("wiggle", description="Wiggle the robot's body.")
+    @robot_skill("wiggle", description="Wiggle the robot's body.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def wiggle(self) -> bool:
         actions = []
@@ -874,8 +880,8 @@ class Go2Wrapper(RobotWrapper):
         go2_action = Go2Action(actions)
         go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         return True
-    
-    @robot_skill("wagging", description="Wagging the robot's tail.")
+
+    @robot_skill("wagging", description="Wagging the robot's tail.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def wagging(self) -> bool:
         actions = []
@@ -885,15 +891,22 @@ class Go2Wrapper(RobotWrapper):
         go2_action = Go2Action(actions)
         go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         return True
-    
-    @robot_skill("stretch", description="Stretch the robot's limbs.")
+
+    @robot_skill("stretch", description="Stretch the robot's limbs.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def stretch(self) -> bool:
         self._go2_command("stretch")
         time.sleep(2.0)
         return True
-    
-    @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.")
+
+    @robot_skill("speak", description="Make the robot speak.", subsystem=SubSystem.SOUND)
+    @go2action
+    def speak(self, text: str) -> bool:
+        # self._go2_command("speak", text=text)
+        print_t(f">>> Robot says: {text}")
+        return True
+
+    @robot_skill("look_up", description="Look up by adjusting the robot's head pitch.", subsystem=SubSystem.MOVEMENT)
     @go2action
     def look_up(self) -> bool:
         actions = [
@@ -904,8 +917,8 @@ class Go2Wrapper(RobotWrapper):
         go2_action.run(lambda: self._go2_command("euler", roll=0, pitch=0, yaw=0))
         print_t("-> Look up end")
         return True
-    
-    @robot_skill("goto_waypoint", description="Go to a specific waypoint")
+
+    @robot_skill("goto_waypoint", description="Go to a specific waypoint", subsystem=SubSystem.MOVEMENT)
     @go2action
     def goto_waypoint(self, id: int) -> bool:
         wp = self.observation.slam_map.get_waypoint(id)
