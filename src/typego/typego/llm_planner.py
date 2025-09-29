@@ -21,41 +21,47 @@ def read_file(filename):
         print(f"Warning: File {filename} not found")
         return ""
 
-class LLMPlanner():
+class PromptGenerator():
     def __init__(self, robot: RobotWrapper):
         self.llm = LLMWrapper()
         self.robot = robot
 
         S2DPlan.init_default()
 
-        self.s1_prompt = read_file("s1_prompt.txt")
+        self.s1_base_prompt = read_file("s1_base_prompt.txt")
         self.s1_examples = read_file("s1_examples.txt")
 
-        self.s2s_prompt = read_file("s2s_prompt.txt")
+        self.s2s_base_prompt = read_file("s2s_base_prompt.txt")
         self.s2s_user_guidelines = read_file("s2s_user_guidelines.txt")
         self.s2s_examples = read_file("s2s_examples.txt")
 
-        self.s2d_prompt = read_file("s2d_prompt.txt")
+        self.s2d_base_prompt = read_file("s2d_base_prompt.txt")
         self.s2d_user_guidelines = read_file("s2d_user_guidelines.txt")
         self.s2d_examples = read_file("s2d_examples.txt")
 
-    def s1_plan(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
-        prompt = self.s1_prompt.format(example_plans=self.s1_examples,
+    def s1_prompt(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
+        prompt = self.s1_base_prompt.format(example_plans=self.s1_examples,
                                         user_instruction=inst,
                                         observation=json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2))
 
-        ret = self.llm.request(prompt, model_type).split('\n')[0].strip()
+        try:
+            # TODO: move newline removal to serving side
+            ret = self.llm.request(prompt, model_type).split('\n')[0].strip()
+        except Exception as e:
+            print_t(f"[S2S] Error during LLM request: {e}")
+            return ""
+
         with open(CHAT_LOG_DIR + "s1_log.txt", "a") as f:
             remove_leading_prompt = prompt
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2s_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2s_prompt(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
-        prompt = self.s2s_prompt.format(
+        prompt = self.s2s_base_prompt.format(
             robot_skills=robot_skills,
             example_plans=self.s2s_examples,
             instruction=inst if inst else "None",
@@ -64,23 +70,23 @@ class LLMPlanner():
             observation=observation
         )
 
-        # print_t(f"[S2S] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
         try:
             ret = self.llm.request(prompt, model_type)
         except Exception as e:
             print_t(f"[S2S] Error during LLM request: {e}")
             return ""
+        
         with open(CHAT_LOG_DIR + "s2s_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2d_prompt(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
-        prompt = self.s2d_prompt.format(
+        prompt = self.s2d_base_prompt.format(
             robot_skills=robot_skills,
             example_plans=self.s2d_examples,
             task_history=S2DPlan.get_s2d_input(),
@@ -89,10 +95,29 @@ class LLMPlanner():
             observation=observation
         )
 
-        # print_t(f"[S2D] Execution request: {prompt.split('# CURRENT TASK', 1)[-1]}")
-        ret = self.llm.request(prompt, model_type)
+        try:
+            ret = self.llm.request(prompt, model_type)
+        except Exception as e:
+            print_t(f"[S2S] Error during LLM request: {e}")
+            return ""
+        
         with open(CHAT_LOG_DIR + "s2d_log.txt", "a") as f:
             remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
+    
+
+class LLMPlanner():
+    def __init__(self, robot: RobotWrapper):
+        self.robot = robot
+        self.prompt_gen = PromptGenerator(robot)
+
+    def s1_plan(self, inst: str, model_type: ModelType = ModelType.LOCAL_1B) -> str:
+        return self.prompt_gen.s1_prompt(inst, model_type)
+
+    def s2s_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+        return self.prompt_gen.s2s_prompt(inst, model_type)
+
+    def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+        return self.prompt_gen.s2d_prompt(inst, model_type)

@@ -311,7 +311,8 @@ class Go2Action:
             raise ValueError("Go2Action event is not initialized. Please call Go2Wrapper.start() first.")
         
     def run(self, finish_callback: callable = None):
-        threading.Thread(target=self.execute, args=(finish_callback,)).start()
+        # threading.Thread(target=self.execute, args=(finish_callback,)).start()
+        self.execute(finish_callback)
 
     def execute(self, finish_callback: callable = None):
         """
@@ -367,17 +368,6 @@ def go2action(feature_str = None):
         @wraps(func)
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
             print_t(f"> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
-            if not self.action_lock.acquire(timeout=0.1):
-                # self.stop_action()
-                self.stop_event.set()
-                while not self.action_lock.acquire(timeout=0.1):
-                    if not self.running:
-                        return
-                self.stop_event.clear()
-            else:
-                self.stop_event.clear()
-
-            print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
 
@@ -386,8 +376,7 @@ def go2action(feature_str = None):
                 print(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 result = func(self, *args, **kwargs)
             finally:
-                print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
-                self.action_lock.release()
+                print(f">>> [Go2] Action {func.__name__} completed")
 
             self.observation.posture = RobotPosture.STANDING
             return result
@@ -405,17 +394,6 @@ def go2action(feature_str = None):
         @wraps(func)
         def wrapper(self: "Go2Wrapper", *args, **kwargs):
             print(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
-            if not self.action_lock.acquire(timeout=0.1):
-                self.stop_action()
-                self.stop_event.set()
-                while not self.action_lock.acquire(timeout=0.1):
-                    if not self.running:
-                        return
-                self.stop_event.clear()
-            else:
-                self.stop_event.clear()
-
-            print(f">>> [Go2] Action {func.__name__} acquired lock, executing...")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
 
@@ -425,7 +403,6 @@ def go2action(feature_str = None):
                 result = func(self, *args, **kwargs)
             finally:
                 print(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
-                self.action_lock.release()
 
             self.observation.posture = RobotPosture.STANDING
             return result
@@ -533,6 +510,9 @@ class Go2Wrapper(RobotWrapper):
         self.spin_thread.start()
         self.command_thread.start()
         print_t("[Go2] Robot is ready.")
+
+        time.sleep(1.0)  # Wait a moment for everything to stabilize
+        self.registry.execute("wiggle()")
         return True
 
     @overrides
@@ -568,7 +548,7 @@ class Go2Wrapper(RobotWrapper):
 
     def command_sender(self):
         send_request = lambda control: (
-            print(f"Sending control: {control}") or 
+            # print(f"Sending control: {control}") or 
             requests.post(self.robot_url + '/control', json=control, 
                         headers={"Content-Type": "application/json"}, timeout=0.5)
         )
@@ -586,6 +566,12 @@ class Go2Wrapper(RobotWrapper):
                         and control.get("vy", 0.0) == 0.0
                         and control.get("vyaw", 0.0) == 0.0
                         and (current_euler == 0.0).all()):
+                    control = {"command": "stop"}
+                elif control["command"] == "euler" \
+                        and (control.get("roll", 0.0) == 0.0
+                        and control.get("pitch", 0.0) == 0.0
+                        and control.get("yaw", 0.0) == 0.0):
+                    current_euler[:] = 0.0
                     control = {"command": "stop"}
             except queue.Empty:
                 # if control["command"] != "euler":
@@ -606,6 +592,7 @@ class Go2Wrapper(RobotWrapper):
                         "pitch": float(current_euler[1]),
                         "yaw": float(current_euler[2]),
                     })
+                    result = send_request({'command': 'balanced_stand'})
                     if result.status_code != 200:
                         print_t(f"[Go2] Euler command failed: {result.status_code}, {result.text}")
                 except requests.RequestException as e:
