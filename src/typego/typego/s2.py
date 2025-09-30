@@ -101,9 +101,9 @@ class S2DPlan:
         self.variables = {}
         self.global_trans = []
         self.states: dict[str, S2DPlanState] = {
-            "IDLE": S2DPlanState("IDLE", "standby, wait for instructions -> IDLE")
+            "DEFAULT": S2DPlanState("DEFAULT", "Do anything that can help with the given task -> DEFAULT")
         }
-        self.current_state = "IDLE"
+        self.current_state = "DEFAULT"
 
         self.start_time = time.time()
         self.end_time = None
@@ -137,26 +137,16 @@ class S2DPlan:
         default_plan.status = STATUS_IN_PROGRESS
         cls.PLAN_LIST[default_plan.id] = default_plan
 
-    @classmethod
-    def stop_current_plan(cls):
-        if cls.CURRENT:
-            cls.CURRENT.status = STATUS_STOPPED
-            cls.CURRENT.end_time = time.time()
-            cls.CURRENT = None
+    def parse(self, plan_json: dict):
+        self.variables = plan_json.get("variables", {})
+        self.global_trans = plan_json.get("global_trans", [])
+        self.current_state = plan_json.get("initial_state", "FREE")
+        self.states = {name: S2DPlanState(name, content) for name, content in plan_json.get("states", {}).items()}
 
-    @classmethod
-    def set_default(cls):
-        cls.stop_current_plan()
-        cls.CURRENT = cls.HISTORY.get(0)
-        cls.CURRENT.status = STATUS_IN_PROGRESS
-        cls.CURRENT.start_time = time.time()
-        cls.CURRENT.end_time = None
-        cls.CURRENT.s2s_history = []  # reset action list for default plan
-
-    def parse(self, instruct: str, llm_response: str):
-        def parse_task(task: str):
+    def process_s2d_response(cls, llm_response: str):
+        def parse_task(task: str) -> tuple[str, int | None]:
             """
-            Parse a task string like 'override(5)', 'pause(3)', or 'continue(10)'.
+            Parse a task string like 'stop(5)', 'update(3)', or 'continue(10)'.
             Returns (command: str, task_id: int).
             Raises ValueError if format is invalid.
             """
@@ -174,31 +164,35 @@ class S2DPlan:
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {e}")
 
-        command, task_id = parse_task(plan_json.get("task", "").strip())  # validate format
+        commands, task_id = parse_task(plan_json.get("action", "").strip())  # validate format
+        commands = [cmd.strip() for cmd in commands.split(";") if cmd.strip()]
 
-        if command == "new":
-            cls.stop_current_plan()
-            return cls(instruct, plan_json)
-        elif command == "stop":
-            cls.stop_current_plan()
-            cls.set_default()
-            return cls.CURRENT
-        elif task_id is None:
-            raise ValueError("Task ID must be provided for continue commands.")
+        for command in commands:
+            if command == "update":
+                plan = cls.PLAN_LIST.get(task_id)
+                if plan:
+                    plan.parse(plan_json)
+            elif command == "stop":
+                plan = cls.PLAN_LIST.get(task_id)
+                if plan and plan.status == STATUS_IN_PROGRESS:
+                    plan.status = STATUS_STOPPED
+                    plan.end_time = time.time()
+            elif task_id is None:
+                raise ValueError("Task ID must be provided for continue commands.")
 
-        if command == "continue":
-            plan = cls.HISTORY.get(task_id)
-            if plan and plan.status != STATUS_IN_PROGRESS:
-                plan.status = STATUS_IN_PROGRESS
-                plan.end_time = None
-                cls.CURRENT = plan
-                return plan
-        else:
-            raise ValueError(f"Unknown command: {command}")
+            if command == "continue":
+                plan = cls.PLAN_LIST.get(task_id)
+                if plan and plan.status != STATUS_IN_PROGRESS:
+                    plan.status = STATUS_IN_PROGRESS
+                    plan.end_time = None
+
+                    # TODO: spawn s2s thread if not running
+            else:
+                raise ValueError(f"Unknown command: {command}")
 
     @classmethod
     def get_history_sorted_by_time(cls, after_time: float = None):
-        plans = cls.HISTORY.values()
+        plans = cls.PLAN_LIST.values()
         if after_time is not None:
             plans = filter(lambda p: p.start_time > after_time, plans)
         return sorted(plans, key=lambda p: p.start_time)
@@ -219,7 +213,6 @@ class S2DPlan:
         if new_state == "DONE":
             self.status = STATUS_SUCCESS
             self.end_time = time.time()
-            S2DPlan.CURRENT = None
 
     def process_s1_response(self, response: str) -> str | None:
         if response.startswith('```json'):
@@ -262,31 +255,46 @@ class S2DPlan:
                 raise e
             
     def __repr__(self) -> str:
-        return json.dumps({
+        if self.current_state == "DEFAULT":
+            plan_str = "DEFAULT"
+        else:
+            info = {
+                "variables": self.variables,
+                "global_trans": self.global_trans,
+                "current_state": self.current_state,
+                "states": self.states
+            }
+            plan_str = json.dumps(info, indent=4, cls=S2PlanEncoder)
+
+        ret = {
             "id": str(self.id),
             "start": format_time(self.start_time),
             "end": format_time(self.end_time),
             "content": self.content,
-            "status": self.status
-        })
-    
+            "status": self.status,
+        }
+
+        if self.status == STATUS_IN_PROGRESS:
+            ret["plan"] = plan_str
+
+        return json.dumps(ret)
+
     @classmethod
     def get_s2d_input(cls) -> str:
         rslt = "Task list: \n"
         rslt += str(cls.get_history_sorted_by_time())
-        rslt += "\n\nPlan for in-progress task:\n"
 
-        if not cls.CURRENT:
-            return rslt + "None\n"
-        else:
-            info = {
-                "variables": cls.CURRENT.variables,
-                "global_trans": cls.CURRENT.global_trans,
-                "current_state": cls.CURRENT.current_state,
-                "states": cls.CURRENT.states
-            }
+        # if not cls.CURRENT:
+        #     return rslt + "None\n"
+        # else:
+        #     info = {
+        #         "variables": cls.CURRENT.variables,
+        #         "global_trans": cls.CURRENT.global_trans,
+        #         "current_state": cls.CURRENT.current_state,
+        #         "states": cls.CURRENT.states
+        #     }
 
-            rslt += json.dumps(info, indent=4, cls=S2PlanEncoder)
+        #     rslt += json.dumps(info, indent=4, cls=S2PlanEncoder)
         return rslt
 
     def get_s2s_input(self) -> str:

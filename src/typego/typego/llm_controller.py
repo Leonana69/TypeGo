@@ -136,8 +136,8 @@ class LLMController():
             new_inst = self.get_instruction(0)
             plan = self.planner.s1_plan(new_inst)
 
-            # time.sleep(3.0)
-            # self.robot.registry.execute("stand_up()")
+            time.sleep(3.0)
+            self.robot.registry.execute("stand_up()")
 
             print_t(f"[S1] Get plan: {plan}")
 
