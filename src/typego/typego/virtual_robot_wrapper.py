@@ -75,18 +75,22 @@ class VirtualRobotWrapper(RobotWrapper):
     @overrides
     def _start(self) -> bool:
         self.observation.posture = RobotPosture.STANDING
-
-        # time.sleep(1)
-        # threading.Thread(target=self.registry.execute, args=('orienting("apple")',)).start()
-        # threading.Thread(target=self.registry.execute, args=('move_forward(1)',)).start()
-
-        # time.sleep(3)
-        # self.stop_action()
-
         return True
 
     @overrides
     def _stop(self):
+        pass
+
+    @overrides
+    def _pause_action(self):
+        pass
+
+    @overrides
+    def _resume_action(self):
+        pass
+
+    @overrides
+    def _stop_action(self):
         pass
 
     @overrides

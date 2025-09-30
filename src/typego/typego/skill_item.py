@@ -4,6 +4,8 @@ from enum import Enum, auto
 from typing import Any, Optional, TypeAlias
 import threading
 import contextvars
+import uuid
+import itertools
 
 from typego.utils import log_error
 
@@ -53,12 +55,19 @@ def wait_if_paused(sleep_s: float = 0.02):
 # =========================
 class SkillExecution:
     """Bookkeeping for an active skill."""
-    def __init__(self, name: str, subsystem: SubSystem, thread_id: int, control: SkillControl):
+    def __init__(self, exec_id: str, name: str, subsystem: SubSystem, thread: threading.Thread, control: SkillControl):
+        self.id = exec_id
         self.name = name
         self.subsystem = subsystem
-        self.thread_id = thread_id
+        self.thread = thread
         self.control = control
         self.started_at = time.time()
+
+    def is_alive(self) -> bool:
+        return self.thread.is_alive()
+
+    def has_finished(self) -> bool:
+        return not self.thread.is_alive()
 
 class SkillRegistry:
     def __init__(self):
@@ -66,15 +75,18 @@ class SkillRegistry:
         self._funcs: dict[str, callable] = {}
         self._subsystems: dict[str, SubSystem] = {}
 
-        # Reentrant locks per subsystem enable nested same-thread calls
-        self._locks: dict[SubSystem, threading.RLock] = {
-            ss: threading.RLock() for ss in SubSystem
+        self._locks: dict[SubSystem, threading.Semaphore] = {
+            ss: threading.Semaphore(1) for ss in SubSystem
         }
         self._running: dict[SubSystem, Optional[str]] = {ss: None for ss in SubSystem}
         self._active: dict[SubSystem, Optional[SkillExecution]] = {ss: None for ss in SubSystem}
+        self._paused: dict[SubSystem, Optional[SkillExecution]] = {ss: None for ss in SubSystem}
 
-        # Guard for mutating _active (lightweight; separate from subsystem locks)
         self._active_guard = threading.RLock()
+
+        # ID generator
+        self._exec_counter = itertools.count(1)
+        self._executions: dict[str, SkillExecution] = {}  # id → execution
 
     def register(self, name: str, description: str = "",
                  params: dict | None = None,
@@ -113,32 +125,55 @@ class SkillRegistry:
             for ss in targets:
                 exe = self._active.get(ss)
                 if exe:
-                    exe.control.pause_event.set()
+                    fn = self._funcs.get(exe.name)
+                    if getattr(fn, "__accepts_pause__", False):
+                        exe.control.pause_event.set()
+                        print(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
+
+                        # mark subsystem free
+                        self._paused[ss] = exe
+                        self._active[ss] = None
+                        self._running[ss] = None
+
+                        # free semaphore so new skill can acquire
+                        self._locks[ss].release()
+                    else:
+                        exe.control.stop_event.set()
+                        print(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
                     ok = True
             return ok
 
     def resume(self, subsystem: Optional[SubSystem] = None) -> bool:
         with self._active_guard:
-            targets = [subsystem] if subsystem else list(self._active.keys())
+            targets = [subsystem] if subsystem else list(self._paused.keys())
             ok = False
             for ss in targets:
-                exe = self._active.get(ss)
+                exe = self._paused.get(ss)
                 if exe:
                     exe.control.pause_event.clear()
+                    self._active[ss] = exe
+                    self._running[ss] = exe.name
+                    self._paused[ss] = None
+
+                    # re-acquire semaphore for resumed skill
+                    self._locks[ss].acquire()
+                    print(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
                     ok = True
             return ok
 
-    def stop(self, subsystem: Optional[SubSystem] = None) -> bool:
-        with self._active_guard:
-            targets = [subsystem] if subsystem else list(self._active.keys())
-            print(f"[SkillRegistry] Stopping subsystems: {[ss.name for ss in targets]}")
-            ok = False
-            for ss in targets:
+    def stop(self, subsystem: Optional[SubSystem] = None, timeout: float | None = None) -> bool:
+        targets = [subsystem] if subsystem else list(self._active.keys())
+        ok = False
+        for ss in targets:
+            # get exe without holding the guard while joining
+            with self._active_guard:
                 exe = self._active.get(ss)
-                if exe:
-                    exe.control.stop_event.set()
-                    ok = True
-            return ok
+            if exe:
+                print(f"[SkillRegistry] Stopping subsystem {ss.name}")
+                exe.control.stop_event.set()
+                exe.thread.join(timeout=timeout)  # no guard held here
+                ok = True
+        return ok
 
     # -------------------------
     # Execute with BUSY + control
@@ -148,10 +183,11 @@ class SkillRegistry:
         func_call: str,
         args: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Execute a registered skill by name with typed args.
+        """Execute a registered skill asynchronously in a background thread.
         - Ensures exclusive subsystem execution (non-blocking BUSY).
         - Provides stop/pause control via threading.Event.
         - Allows nested same-thread calls (RLock)."""
+
         # ---- Parse call ----
         if not args:
             m = re.match(r"(\w+)\((.*)\)", func_call)
@@ -172,53 +208,61 @@ class SkillRegistry:
             return {"ok": False, "error": f"unknown skill '{name}'"}
 
         subsystem = self._subsystems.get(name, SubSystem.DEFAULT)
-        lock = self._locks[subsystem]
-
-        # Try to acquire the subsystem lock WITHOUT blocking
-        if not lock.acquire(blocking=False):
-            running = self._running.get(subsystem)
-            print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY running '{running}'")
-            return {"ok": False, "error": "BUSY", "subsystem": subsystem.name, "running": running}
-
         control = SkillControl()
-        exe = SkillExecution(
-            name=name,
-            subsystem=subsystem,
-            thread_id=threading.get_ident(),
-            control=control
-        )
 
-        try:
-            self._running[subsystem] = name
-            with self._active_guard:
-                self._active[subsystem] = exe
+        # Generate unique ID
+        exec_id = f"{name}-{next(self._exec_counter)}-{uuid.uuid4().hex[:6]}"
 
-            # Prepare typed/ordered args
-            parsed = item.parse_args(arg_list) if arg_list else item.parse_args([])
+        def runner():
+            lock = self._locks[subsystem]
+            if not lock.acquire(blocking=False):
+                print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY")
+                return
 
-            # Pass control events iff the skill accepts them explicitly
-            fn = self._funcs[name]
-            if getattr(fn, "__accepts_stop__", False):
-                kwargs["stop_event"] = control.stop_event
-            if getattr(fn, "__accepts_pause__", False):
-                kwargs["pause_event"] = control.pause_event
-
-            # Set runtime context so helpers work even if function signature doesn't accept events
             token = _current_control.set(control)
             try:
-                ret = fn(*parsed, **kwargs) if kwargs else fn(*parsed)
+                fn = self._funcs[name]
+
+                if getattr(fn, "__accepts_stop__", False):
+                    kwargs["stop_event"] = control.stop_event
+                if getattr(fn, "__accepts_pause__", False):
+                    kwargs["pause_event"] = control.pause_event
+
+                parsed = item.parse_args(arg_list) if arg_list else []
+                print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] in subsystem {subsystem.name}")
+                fn(*parsed, **kwargs) if kwargs else fn(*parsed)
+            except Exception as e:
+                print(f"[SkillRegistry] ERROR in skill '{name}': {e}")
             finally:
-                _current_control.reset(token)
+                with self._active_guard:
+                    self._active[subsystem] = None
+                self._running[subsystem] = None
+                lock.release()
+                print(f"[SkillRegistry] Skill '{name}' [{exec_id}] finished, subsystem {subsystem.name} released")
 
-            return {"ok": True, "data": ret}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-        finally:
-            with self._active_guard:
-                self._active[subsystem] = None
-            self._running[subsystem] = None
-            lock.release()
+        t = threading.Thread(target=runner, daemon=True)
+        exe = SkillExecution(exec_id, name, subsystem, t, control)
 
+        with self._active_guard:
+            self._active[subsystem] = exe
+            self._executions[exec_id] = exe
+        self._running[subsystem] = name
+
+        t.start()
+        return {"ok": True, "id": exec_id}
+    
+    def get_status(self, exec_id: str) -> dict[str, Any]:
+        exe = self._executions.get(exec_id)
+        if not exe:
+            return {"ok": False, "error": f"unknown execution id {exec_id}"}
+        return {
+            "ok": True,
+            "id": exe.id,
+            "name": exe.name,
+            "subsystem": exe.subsystem.name,
+            "alive": exe.is_alive(),
+            "started_at": exe.started_at,
+        }
 
 class SkillArg:
     def __init__(self, arg_name: str, arg_type: type):

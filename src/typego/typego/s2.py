@@ -93,19 +93,17 @@ class S2PlanEncoder(JSONEncoder):
 
 class S2DPlan:
     ID_COUNTER = 0
-    HISTORY: dict[int, "S2DPlan"] = {}
-    CURRENT: "S2DPlan" = None
-    def __init__(self, content: str, plan_json: dict):
+    PLAN_LIST: dict[int, "S2DPlan"] = {}
+    def __init__(self, content: str):
         self.id = S2DPlan.ID_COUNTER
         S2DPlan.ID_COUNTER += 1
 
-        self.variables = plan_json.get("variables", {})
-        self.global_trans = plan_json.get("global_trans", [])
+        self.variables = {}
+        self.global_trans = []
         self.states: dict[str, S2DPlanState] = {
-            name: S2DPlanState(name, state_content)
-            for name, state_content in plan_json["states"].items()
+            "IDLE": S2DPlanState("IDLE", "standby, wait for instructions -> IDLE")
         }
-        self.current_state = plan_json.get("initial_state", list(self.states.keys())[0])
+        self.current_state = "IDLE"
 
         self.start_time = time.time()
         self.end_time = None
@@ -114,8 +112,7 @@ class S2DPlan:
 
         self.s2s_history: list[ActionItem] = []  # track actions in this plan
 
-        S2DPlan.HISTORY[self.id] = self
-        S2DPlan.CURRENT = self
+        S2DPlan.PLAN_LIST[self.id] = self
     
     @classmethod
     def init_default(cls):
@@ -138,9 +135,7 @@ class S2DPlan:
         default_plan.end_time = None
         default_plan.content = DEFAULT_PLAN_CONTENT
         default_plan.status = STATUS_IN_PROGRESS
-
-        cls.HISTORY[default_plan.id] = default_plan
-        cls.CURRENT = default_plan
+        cls.PLAN_LIST[default_plan.id] = default_plan
 
     @classmethod
     def stop_current_plan(cls):
@@ -158,8 +153,7 @@ class S2DPlan:
         cls.CURRENT.end_time = None
         cls.CURRENT.s2s_history = []  # reset action list for default plan
 
-    @classmethod
-    def parse(cls, instruct: str, llm_response: str):
+    def parse(self, instruct: str, llm_response: str):
         def parse_task(task: str):
             """
             Parse a task string like 'override(5)', 'pause(3)', or 'continue(10)'.

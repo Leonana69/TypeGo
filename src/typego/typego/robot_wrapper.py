@@ -440,20 +440,27 @@ class RobotWrapper(ABC):
             bound = getattr(self, method_name, None)
             if not callable(bound):
                 continue
+
             self.registry.register(
                 skill_name, description=sk_desc, params=sk_params, subsystem=sk_subsys
             )(bound)
 
     # ---- Public control APIs (global or per-subsystem) ----
-    def pause_action(self, subsystem: Optional[SubSystem] = None) -> bool:
-        return self.registry.pause(subsystem)
+    def pause_action(self) -> bool:
+        ret = self.registry.pause()
+        self._pause_action()
+        return ret
 
-    def resume_action(self, subsystem: Optional[SubSystem] = None) -> bool:
-        return self.registry.resume(subsystem)
+    def resume_action(self) -> bool:
+        ret = self.registry.resume()
+        self._resume_action()
+        return ret
 
-    def stop_action(self, subsystem: Optional[SubSystem] = None) -> bool:
-        return self.registry.stop(subsystem)
-    
+    def stop_action(self) -> bool:
+        ret = self.registry.stop()
+        self._stop_action()
+        return ret
+
     def start(self):
         if self.running:
             raise RuntimeError("Robot is already running")
@@ -471,45 +478,36 @@ class RobotWrapper(ABC):
     @abstractmethod
     def _start(self) -> bool:
         """
-        Start the robot specific tasks.
+        Start the robot.
         """
         ...
 
     @abstractmethod
     def _stop(self):
         """
-        Stop the robot specific tasks.
+        Stop the robot.
         """
         ...
 
     @abstractmethod
-    @robot_skill("move_forward", description="Move forward by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
-    def move_forward(self, distance: float) -> bool:
+    def _pause_action(self):
+        """
+        Pause the robot's current action.
+        """
         ...
 
     @abstractmethod
-    @robot_skill("move_back", description="Move back by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
-    def move_back(self, distance: float) -> bool:
+    def _resume_action(self):
+        """
+        Resume the robot's current action.
+        """
         ...
 
     @abstractmethod
-    @robot_skill("move_left", description="Move left by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
-    def move_left(self, distance: float) -> bool:
-        ...
-
-    @abstractmethod
-    @robot_skill("move_right", description="Move right by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
-    def move_right(self, distance: float) -> bool:
-        ...
-
-    @abstractmethod
-    @robot_skill("turn_left", description="Rotate counter-clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
-    def turn_left(self, deg: float) -> bool:
-        ...
-
-    @abstractmethod
-    @robot_skill("turn_right", description="Rotate clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
-    def turn_right(self, deg: float) -> bool:
+    def _stop_action(self):
+        """
+        Stop the robot's current action.
+        """
         ...
 
     @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)

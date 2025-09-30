@@ -4,33 +4,59 @@ from openai import Stream
 from typing import Optional
 import time
 import threading
+import random
 
 from typego.llm_wrapper import ModelType
 from typego.yolo_client import YoloClient
 from typego.robot_wrapper import RobotPosture
-from typego.llm_planner import LLMPlanner
+from typego.plan_generator import PlanGenerator
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
 from typego.s2 import S2DPlan
 from typego.method import MethodEngine, make_find_object_method, make_follow_object_method
 
 class S0Event:
-    def __init__(self, description: str, condition: callable, action: callable, priority: int = 0, timeout: float = 3.0):
+    def __init__(self, description: str, condition: callable,
+                 actions: list[callable], priority: int = 0, min_interval: float = 3.0):
         self.description = description
         self.condition = condition
-        self.action = action
-        self.timeout = timeout
+        self.actions = actions
+        self.min_interval = min_interval
         self.priority = priority
         self.timer = time.time()
 
-    def check(self, current_priority: int=99) -> bool:
+    def check(self, current_priority: int = 99) -> bool:
         if self.priority < current_priority and self.condition() and (time.time() - self.timer) > 0.0:
-            self.timer = time.time() + self.timeout
+            self.timer = time.time() + self.min_interval
             return True
         return False
-    
-    def execute(self):
-        self.action()
+
+    def execute(self, registry, on_finished: Optional[callable] = None):
+        """Non-blocking execution: starts actions in a background thread.
+        Calls on_finished() when all actions complete."""
+        print_t(f"[S0Event] Executing {self.description}")
+
+        def run_actions():
+            exec_ids = []
+            for action in self.actions:
+                result = action()
+                # If registry skill, capture exec_id
+                print_t(f"[S0Event] Action result: {result}")
+
+                if isinstance(result, dict) and result.get("ok") and "id" in result:
+                    exec_ids.append(result["id"])
+            # Wait for all registry executions to finish
+            for eid in exec_ids:
+                while True:
+                    status = registry.get_status(eid)
+                    if not status["ok"] or not status["alive"]:
+                        break
+                    time.sleep(0.05)
+            print_t(f"[S0Event] Finished {self.description}")
+            if on_finished:
+                on_finished()
+
+        threading.Thread(target=run_actions, daemon=True).start()
 
 class LLMController():
     def __init__(self, robot_info: RobotInfo):
@@ -56,14 +82,31 @@ class LLMController():
         if robot_info.robot_type == "go2":
             from typego.go2_wrapper import Go2Wrapper
             self.robot = Go2Wrapper(robot_info)
-        
-        self.planner = LLMPlanner(self.robot)
+
+        self.planner = PlanGenerator(self.robot)
 
         self.s0_loop_thread = threading.Thread(target=self.s0_loop)
         self.s1_loop_thread = threading.Thread(target=self.s1_loop)
         self.s2s_loop_thread = threading.Thread(target=self.s2s_loop)
         self.s2d_loop_thread = threading.Thread(target=self.s2d_loop)
         # self.vc_thread = threading.Thread(target=self.check_voice_command_thread)
+
+    def get_instruction(self, index: int) -> Optional[str]:
+        with self.latest_inst_lock:
+            if not self.latest_inst_flag[index]:
+                self.latest_inst_flag[index] = True
+                return self.latest_inst
+            else:
+                return None
+
+    def put_instruction(self, inst: str):
+        with self.latest_inst_lock:
+            print_t(f"[C] Received instruction: {inst}")
+            self.latest_inst = inst
+            self.latest_inst_flag = [False, False, False]  # [s1, s2s, s2d]
+            self.s1_event.set()
+            self.s2s_event.set()
+            self.s2d_event.set()
 
     def check_voice_command_thread(self):
         while not self.running:
@@ -80,11 +123,16 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        # self.s0_loop_thread.start()
-        self.s1_loop_thread.start()
+        self.s0_loop_thread.start()
+        # self.s1_loop_thread.start()
         # self.s2s_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
+
+        time.sleep(1.0)
+        # self.robot.registry.execute("turn_right(180)")
+        self.robot.registry.execute("look_object('person')")
+        # print(self.robot.registry.execute("move_forward(0.2)"))
 
     def stop_controller(self):
         self.running = False
@@ -118,14 +166,20 @@ class LLMController():
         print_t(f"[C] Starting S0...")
 
         s0events = [
-            # S0Event("Person found", lambda: self.robot.is_visible("person"), lambda: self.robot.look_up(), 5, timeout=10),
-            S0Event("Look sports ball", lambda: self.robot.is_visible("sports ball"), lambda: self.robot.look_object('sports ball'), 1, timeout=3),
-            S0Event("Step back", lambda: self.robot.observation.blocked(), lambda: self.robot.move_back(0.3), 0, timeout=1.0),
+            S0Event("Step back",
+                    lambda: self.robot.observation.blocked(),
+                    [lambda: self.robot.registry.execute("move_back(0.3)")],
+                    0, min_interval=1.0),
+            # S0Event("Avoid person",
+            #         lambda: self.robot.get_obj_info("person") is not None,
+            #         [lambda: self.robot.registry.execute("turn_right(90)") if random.random() < 0.5 else self.robot.registry.execute("turn_left(90)")],
+            #         5, min_interval=4.0),
         ]
 
         self.s0_in_progress_event: Optional[S0Event] = None
         event_queue = queue.Queue()
-        s0_event_executor_thread = threading.Thread(target=self.s0_event_executor, args=(event_queue,))
+        s0_event_executor_thread = threading.Thread(target=self.s0_event_executor,
+                                                    args=(event_queue,))
         s0_event_executor_thread.start()
 
         while self.running:
@@ -133,24 +187,39 @@ class LLMController():
                 if event.check(self.s0_in_progress_event.priority if self.s0_in_progress_event else 99):
                     if self.s0_in_progress_event is None:
                         print_t(f"[C] New event triggered: {event.description}")
-                    else:
-                        print_t(f"[C] Canceling {self.s0_in_progress_event.description}... and executing {event.description}")
-                        self.robot.stop_action()
+                        event_queue.put(("normal", event))
 
-                    event_queue.put(event)
+                    elif event.priority < self.s0_in_progress_event.priority:
+                        print_t(f"[C] Preempting {self.s0_in_progress_event.description} with {event.description}")
+                        event_queue.put(("preempt", event))
             time.sleep(delay)
 
-    def s0_event_executor(self, event_queue: queue.Queue[S0Event]):
+    def s0_event_executor(self, event_queue: queue.Queue[tuple[str, "S0Event"]]):
         while self.running:
             try:
-                event = event_queue.get(timeout=1)
+                mode, event = event_queue.get(timeout=1)
                 self.s0_control.clear()
-                self.s0_in_progress_event = event
-                event.execute()
-                self.s0_in_progress_event = None
-                self.s0_control.set()
+
+                def on_finished():
+                    if mode == "normal":
+                        self.robot.resume_action()
+                    self.s0_in_progress_event = None
+                    self.s0_control.set()
+
+                if mode == "preempt":
+                    if self.s0_in_progress_event:
+                        self.robot.stop_action()
+                    self.s0_in_progress_event = event
+                    event.execute(self.robot.registry, on_finished)
+
+                elif mode == "normal":
+                    self.robot.pause_action()
+                    self.s0_in_progress_event = event
+                    event.execute(self.robot.registry, on_finished)
+
             except queue.Empty:
                 continue
+
 
     """
     S1: Fast thinking, react to new observations, adjust short-term plans
@@ -237,20 +306,3 @@ class LLMController():
             # process plan ...
             S2DPlan.parse(new_inst, plan)
             print(S2DPlan.CURRENT)
-
-    def get_instruction(self, index: int) -> Optional[str]:
-        with self.latest_inst_lock:
-            if not self.latest_inst_flag[index]:
-                self.latest_inst_flag[index] = True
-                return self.latest_inst
-            else:
-                return None
-
-    def put_instruction(self, inst: str):
-        with self.latest_inst_lock:
-            print_t(f"[C] Received instruction: {inst}")
-            self.latest_inst = inst
-            self.latest_inst_flag = [False, False, False]  # [s1, s2s, s2d]
-            self.s1_event.set()
-            self.s2s_event.set()
-            self.s2d_event.set()

@@ -21,7 +21,7 @@ def read_file(filename):
         print(f"Warning: File {filename} not found")
         return ""
 
-class PromptGenerator():
+class PlanGenerator():
     def __init__(self, robot: RobotWrapper):
         self.llm = LLMWrapper()
         self.robot = robot
@@ -39,7 +39,7 @@ class PromptGenerator():
         self.s2d_user_guidelines = read_file("s2d_user_guidelines.txt")
         self.s2d_examples = read_file("s2d_examples.txt")
 
-    def s1_prompt(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
+    def s1_plan(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
         prompt = self.s1_base_prompt.format(example_plans=self.s1_examples,
                                         user_instruction=inst,
                                         observation=json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2))
@@ -57,7 +57,7 @@ class PromptGenerator():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2s_prompt(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2s_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
@@ -82,7 +82,7 @@ class PromptGenerator():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2d_prompt(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
@@ -106,18 +106,3 @@ class PromptGenerator():
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
-    
-
-class LLMPlanner():
-    def __init__(self, robot: RobotWrapper):
-        self.robot = robot
-        self.prompt_gen = PromptGenerator(robot)
-
-    def s1_plan(self, inst: str, model_type: ModelType = ModelType.LOCAL_1B) -> str:
-        return self.prompt_gen.s1_prompt(inst, model_type)
-
-    def s2s_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
-        return self.prompt_gen.s2s_prompt(inst, model_type)
-
-    def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
-        return self.prompt_gen.s2d_prompt(inst, model_type)
