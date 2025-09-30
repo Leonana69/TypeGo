@@ -66,10 +66,10 @@ class S0:
                     lambda: self.robot.observation.blocked(),
                     [lambda: self.robot.registry.execute("move_back(0.3)")],
                     0, min_interval=1.0),
-            S0Event("Avoid person",
-                    lambda: self.robot.get_obj_info("person") is not None,
-                    [lambda: self.robot.registry.execute("turn_right(90)") if random() < 0.5 else self.robot.registry.execute("turn_left(90)")],
-                    5, min_interval=4.0),
+            # S0Event("Avoid person",
+            #         lambda: self.robot.get_obj_info("person") is not None,
+            #         [lambda: self.robot.registry.execute("turn_right(90)") if random() < 0.5 else self.robot.registry.execute("turn_left(90)")],
+            #         5, min_interval=4.0),
         ]
 
         self.in_progress_event: Optional[S0Event] = None

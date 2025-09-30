@@ -84,14 +84,14 @@ class LLMController():
         self.robot.start()
 
         self.s0_loop_thread.start()
-        # self.s1_loop_thread.start()
+        self.s1_loop_thread.start()
         # self.s2s_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
-        time.sleep(1.0)
+        # time.sleep(1.0)
         # self.robot.registry.execute("turn_right(180)")
-        self.robot.registry.execute("look_object('person')")
+        # self.robot.registry.execute("look_object('person')")
         # print(self.robot.registry.execute("move_forward(0.2)"))
 
     def stop_controller(self):
@@ -120,66 +120,6 @@ class LLMController():
 
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
-    
-    # def s0_loop(self, rate: float = 100.0):
-    #     delay = 1 / rate
-    #     print_t(f"[C] Starting S0...")
-
-    #     s0events = [
-    #         S0Event("Step back",
-    #                 lambda: self.robot.observation.blocked(),
-    #                 [lambda: self.robot.registry.execute("move_back(0.3)")],
-    #                 0, min_interval=1.0),
-    #         # S0Event("Avoid person",
-    #         #         lambda: self.robot.get_obj_info("person") is not None,
-    #         #         [lambda: self.robot.registry.execute("turn_right(90)") if random.random() < 0.5 else self.robot.registry.execute("turn_left(90)")],
-    #         #         5, min_interval=4.0),
-    #     ]
-
-    #     self.s0_in_progress_event: Optional[S0Event] = None
-    #     event_queue = queue.Queue()
-    #     s0_event_executor_thread = threading.Thread(target=self.s0_event_executor,
-    #                                                 args=(event_queue,))
-    #     s0_event_executor_thread.start()
-
-    #     while self.running:
-    #         for event in s0events:
-    #             if event.check(self.s0_in_progress_event.priority if self.s0_in_progress_event else 99):
-    #                 if self.s0_in_progress_event is None:
-    #                     print_t(f"[C] New event triggered: {event.description}")
-    #                     event_queue.put(("normal", event))
-
-    #                 elif event.priority < self.s0_in_progress_event.priority:
-    #                     print_t(f"[C] Preempting {self.s0_in_progress_event.description} with {event.description}")
-    #                     event_queue.put(("preempt", event))
-    #         time.sleep(delay)
-
-    # def s0_event_executor(self, event_queue: queue.Queue[tuple[str, "S0Event"]]):
-    #     while self.running:
-    #         try:
-    #             mode, event = event_queue.get(timeout=1)
-    #             self.s0_control.clear()
-
-    #             def on_finished():
-    #                 if mode == "normal":
-    #                     self.robot.resume_action()
-    #                 self.s0_in_progress_event = None
-    #                 self.s0_control.set()
-
-    #             if mode == "preempt":
-    #                 if self.s0_in_progress_event:
-    #                     self.robot.stop_action()
-    #                 self.s0_in_progress_event = event
-    #                 event.execute(self.robot.registry, on_finished)
-
-    #             elif mode == "normal":
-    #                 self.robot.pause_action()
-    #                 self.s0_in_progress_event = event
-    #                 event.execute(self.robot.registry, on_finished)
-
-    #         except queue.Empty:
-    #             continue
-
 
     """
     S1: Fast thinking, react to new observations, adjust short-term plans
@@ -195,18 +135,21 @@ class LLMController():
             self.s1_s2s_event.clear()
             new_inst = self.get_instruction(0)
             plan = self.planner.s1_plan(new_inst)
+
+            # time.sleep(3.0)
+            # self.robot.registry.execute("stand_up()")
+
             print_t(f"[S1] Get plan: {plan}")
 
-            ## TODO: make skills non-blocking
-            # self.robot.registry.execute("move_forward(0.3)")
-            # time.sleep(1.0)
+            self.robot.registry.execute('follow("sports ball")')
+            # self.robot.registry.execute('turn_left(180)')
 
             # find_object_method = make_follow_object_method(self.robot)
             # find_person = find_object_method.bind(object="sports ball")
             # print(find_person.goal)
             # method_engine = MethodEngine(find_person)
             # result = method_engine.run()
-            self.robot.registry.execute('follow("sports ball")')
+            
 
             # print(f"[S1] Method result: {result}")
             # self.robot.registry.execute("nav(0.0, 0.0)")

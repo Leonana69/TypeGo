@@ -836,14 +836,15 @@ class Go2Wrapper(RobotWrapper):
         start_time = time.time()
         while not stop_event.is_set():
             if pause_event.is_set():
-                time.sleep(0.1)
-                continue
+                print_t("[Go2] Follow paused...")
+                pause_event.wait()
+                print_t("[Go2] Follow resumed...")
 
             if time.time() - start_time > 30.0:
                 return False
             
             cycle_start_time = time.time()
-            info = self.get_obj_info(object)
+            info = self.get_obj_info(object, True)
             if info is not None:
                 last_seen_cx = info.cx
                 if abs(last_seen_cx - 0.5) < 0.1:
@@ -858,8 +859,8 @@ class Go2Wrapper(RobotWrapper):
                 else:
                     vx = 0.0
 
-                if abs(info.cy - 0.5) > 0.1:
-                    current_pitch += (info.cy - 0.5) / 2.0
+                if abs(info.cy - 0.5) > 0.2:
+                    current_pitch += (info.cy - 0.5) / 3.0
                     self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
                     time.sleep(0.2)
                 self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
