@@ -24,13 +24,15 @@ class ActionItem:
     status: str
 
     def __repr__(self) -> str:
-        js = {
+        return json.dumps(self.to_dict(), indent=4)
+
+    def to_dict(self):
+        return {
             "start": format_time(self.start),
             "end": format_time(self.end),
             "action": self.content,
             "status": self.status
         }
-        return json.dumps(js, indent=4)
     
     def is_finished(self):
         """Mark the action as finished with a result."""
@@ -89,6 +91,8 @@ class S2PlanEncoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, S2DPlanState):
             return obj.to_dict()
+        elif isinstance(obj, ActionItem):
+            return obj.to_dict()
         return super().default(obj)
 
 class S2DPlan:
@@ -143,6 +147,10 @@ class S2DPlan:
         self.current_state = plan_json.get("initial_state", "FREE")
         self.states = {name: S2DPlanState(name, content) for name, content in plan_json.get("states", {}).items()}
 
+    def is_active(self):
+        return self.status == STATUS_IN_PROGRESS or self.status == STATUS_PAUSED
+
+    @classmethod
     def process_s2d_response(cls, llm_response: str):
         def parse_task(task: str) -> tuple[str, int | None]:
             """
@@ -167,6 +175,9 @@ class S2DPlan:
         commands, task_id = parse_task(plan_json.get("action", "").strip())  # validate format
         commands = [cmd.strip() for cmd in commands.split(";") if cmd.strip()]
 
+        if task_id is None:
+            raise ValueError("Task ID must be provided for continue commands.")
+
         for command in commands:
             if command == "update":
                 plan = cls.PLAN_LIST.get(task_id)
@@ -177,10 +188,7 @@ class S2DPlan:
                 if plan and plan.status == STATUS_IN_PROGRESS:
                     plan.status = STATUS_STOPPED
                     plan.end_time = time.time()
-            elif task_id is None:
-                raise ValueError("Task ID must be provided for continue commands.")
-
-            if command == "continue":
+            elif command == "continue":
                 plan = cls.PLAN_LIST.get(task_id)
                 if plan and plan.status != STATUS_IN_PROGRESS:
                     plan.status = STATUS_IN_PROGRESS
@@ -214,12 +222,15 @@ class S2DPlan:
             self.status = STATUS_SUCCESS
             self.end_time = time.time()
 
-    def process_s1_response(self, response: str) -> str | None:
+    def process_s2s_response(self, response: str) -> str | None:
         if response.startswith('```json'):
             response = response[7:-3].strip()
 
         json_response = json.loads(response)
         next_action = json_response.get("action", None)
+        if next_action and next_action != "continue()":
+            self.add_action(next_action)
+
         next_state = json_response.get("trans", None)
         if next_state:
             self.transit(next_state)
@@ -237,11 +248,15 @@ class S2DPlan:
     def finish_action(self, result: bool):
         """Finish the last action with a result."""
         # TODO: fix this function
+
+        print(f"[S2DPlan] Finishing action with result: {result}")
+
         if not self.s2s_history or not any(action.status == STATUS_IN_PROGRESS for action in self.s2s_history):
             raise ValueError("Cannot finish action: no actions in progress.")
 
         for action in reversed(self.s2s_history):
             if action.status == STATUS_IN_PROGRESS:
+                print(f"[S2DPlan] Finishing action: {action}")
                 action.finish(result)
                 break
 
@@ -256,15 +271,14 @@ class S2DPlan:
             
     def __repr__(self) -> str:
         if self.current_state == "DEFAULT":
-            plan_str = "DEFAULT"
+            plan = "DEFAULT"
         else:
-            info = {
+            plan = {
                 "variables": self.variables,
                 "global_trans": self.global_trans,
                 "current_state": self.current_state,
                 "states": self.states
             }
-            plan_str = json.dumps(info, indent=4, cls=S2PlanEncoder)
 
         ret = {
             "id": str(self.id),
@@ -275,33 +289,21 @@ class S2DPlan:
         }
 
         if self.status == STATUS_IN_PROGRESS:
-            ret["plan"] = plan_str
+            ret["plan"] = plan
 
-        return json.dumps(ret)
+        return json.dumps(ret, indent=4, cls=S2PlanEncoder)
 
     @classmethod
     def get_s2d_input(cls) -> str:
         rslt = "Task list: \n"
         rslt += str(cls.get_history_sorted_by_time())
-
-        # if not cls.CURRENT:
-        #     return rslt + "None\n"
-        # else:
-        #     info = {
-        #         "variables": cls.CURRENT.variables,
-        #         "global_trans": cls.CURRENT.global_trans,
-        #         "current_state": cls.CURRENT.current_state,
-        #         "states": cls.CURRENT.states
-        #     }
-
-        #     rslt += json.dumps(info, indent=4, cls=S2PlanEncoder)
         return rslt
 
     def get_s2s_input(self) -> str:
         matching_actions = []
         for action in reversed(self.s2s_history):
             if action.state == self.current_state:
-                matching_actions.insert(0, str(action))
+                matching_actions.insert(0, action)
             else:
                 break
         info = {
@@ -313,12 +315,12 @@ class S2DPlan:
 
             "action_history": matching_actions
         }
-        return json.dumps(info, indent=4)
+        return json.dumps(info, indent=4, cls=S2PlanEncoder)
 
 test_response = """
 ```json
 {
-	"task": "new()",
+	"action": "update(1)",
 	"variables": {
         "current_index": 0,
         "target_waypoints": [1, 2, 3],
@@ -345,15 +347,16 @@ test_response = """
 ```
 """
 def test_s2_plan():
-    plan = S2DPlan.parse("Play with the person for 3 minutes", test_response)
-
-    print(plan)
-
+    S2DPlan.init_default()
+    plan = S2DPlan("Play with the person for 3 minutes")
+    print(S2DPlan.get_s2d_input())
+    S2DPlan.process_s2d_response(test_response)
     print(plan.get_current_state())
     plan.transit("PLAY")
     plan.transit("PLAY")
 
     print(plan.get_current_state())
+    print(plan.variables)
 
     plan.transit("DONE")
     # assert plan.get_current_state() == "DONE"

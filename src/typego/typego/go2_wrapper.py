@@ -468,38 +468,6 @@ class Go2Wrapper(RobotWrapper):
 
         self._go2_command("nav", **control)
 
-    # TODO: fix this
-    def append_actions(self, actions: str):
-        """
-        Appends an action to the execution queue.
-        """
-        print_t(f"[Go2] Appending actions: {actions}, active program: {self.active_program.statement.to_string() if self.active_program else None}")
-        actions = actions.strip().split(';')
-        for action in actions:
-            action = action.strip()
-            if not action:
-                continue
-
-            if action == "continue()":
-                continue
-            elif action == "stop()":
-                self.stop_action()
-                continue
-            # self.function_queue.put(action)
-            print_t(f"[Go2] Executing action: {action}")
-
-    # def worker(self):
-    #     while self.running:
-    #         try:
-    #             action = self.function_queue.get(0.1)
-    #             print_t(f"[Go2] Executing action: {action}")
-    #             # self.active_program = MiniSpecProgram(self, None)
-    #             # self.active_program.parse(action)
-    #             # self.active_program.eval()
-    #             self.registry.execute(action)
-    #         except queue.Empty:
-    #             pass
-
     @overrides
     def _start(self) -> bool:
         self.spin_thread.start()
@@ -840,7 +808,7 @@ class Go2Wrapper(RobotWrapper):
                 pause_event.wait()
                 print_t("[Go2] Follow resumed...")
 
-            if time.time() - start_time > 30.0:
+            if time.time() - start_time > 60.0:
                 return False
             
             cycle_start_time = time.time()

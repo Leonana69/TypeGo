@@ -57,16 +57,16 @@ class PlanGenerator():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2s_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2s_plan(self, inst: str, s2d_plan: S2DPlan, model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
         observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
 
         prompt = self.s2s_base_prompt.format(
             robot_skills=robot_skills,
             example_plans=self.s2s_examples,
-            instruction=inst if inst else "None",
+            instruction=inst,
             user_guidelines=self.s2s_user_guidelines,
-            current_plan=S2DPlan.CURRENT.get_s2s_input(),
+            current_plan=s2d_plan.get_s2s_input(),
             observation=observation
         )
 

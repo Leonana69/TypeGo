@@ -181,7 +181,8 @@ class SkillRegistry:
     def execute(
         self,
         func_call: str,
-        args: dict[str, Any] | None = None
+        args: dict[str, Any] | None = None,
+        callback: Optional[callable] = None
     ) -> dict[str, Any]:
         """Execute a registered skill asynchronously in a background thread.
         - Ensures exclusive subsystem execution (non-blocking BUSY).
@@ -203,6 +204,9 @@ class SkillRegistry:
 
         print(f"[SkillRegistry] Executing skill '{name}' with args {arg_list or kwargs}")
 
+        if name == "continue":
+            return {"ok": True, "id": "continue"}
+
         item = self._items.get(name)
         if not item:
             return {"ok": False, "error": f"unknown skill '{name}'"}
@@ -213,7 +217,7 @@ class SkillRegistry:
         # Generate unique ID
         exec_id = f"{name}-{next(self._exec_counter)}-{uuid.uuid4().hex[:6]}"
 
-        def runner():
+        def runner(callback: Optional[callable] = None):
             lock = self._locks[subsystem]
             if not lock.acquire(blocking=False):
                 print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY")
@@ -230,7 +234,9 @@ class SkillRegistry:
 
                 parsed = item.parse_args(arg_list) if arg_list else []
                 print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] in subsystem {subsystem.name}")
-                fn(*parsed, **kwargs) if kwargs else fn(*parsed)
+                ret = fn(*parsed, **kwargs) if kwargs else fn(*parsed)
+                if callback:
+                    callback(ret)
             except Exception as e:
                 print(f"[SkillRegistry] ERROR in skill '{name}': {e}")
             finally:
@@ -240,7 +246,7 @@ class SkillRegistry:
                 lock.release()
                 print(f"[SkillRegistry] Skill '{name}' [{exec_id}] finished, subsystem {subsystem.name} released")
 
-        t = threading.Thread(target=runner, daemon=True)
+        t = threading.Thread(target=runner, daemon=True, args=(callback,))
         exe = SkillExecution(exec_id, name, subsystem, t, control)
 
         with self._active_guard:

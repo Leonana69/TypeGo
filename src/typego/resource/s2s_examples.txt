@@ -41,8 +41,8 @@ Check if there is any person in the hallway, if so take a picture of him and rep
   "t": "14:16:50",
   "robot": { "posture": "standing" },
   "perception": [
-    {"name": "table", "bbox": [0.55,0.63,0.40,0.73], "dist": 2.82},
-    {"name": "apple", "bbox": [0.29,0.52,0.11,0.22], "dist": 0.62}
+    { "name": "table", "bbox": [0.55,0.63,0.40,0.73], "dist": 2.82 },
+    { "name": "apple", "bbox": [0.29,0.52,0.11,0.22], "dist": 0.62 }
   ],
   "nav": {
     "current_wp": 3,
@@ -84,7 +84,7 @@ Check if there is any person in the hallway, if so take a picture of him and rep
 		"name": "DEFAULT",
 		"action": "do whatever you think is best",
 		"action_history": [
-		    {"start": "14:15:53", "end": "14:16:08", "action": "goto_waypoint(2)", "status": "in-progress"},
+		    {"start": "14:15:53", "end": "None", "action": "goto_waypoint(2)", "status": "in-progress"},
 		]
 	}
 }
@@ -94,8 +94,8 @@ Check if there is any person in the hallway, if so take a picture of him and rep
   "t": "14:13:25",
   "robot": { "posture": "standing" },
   "perception": [
-    {"name": "keyboard", "bbox": [0.10,0.47,0.12,0.33], "dist": 1.81},
-    {"name": "apple", "bbox": [0.88,0.62,0.12,0.24], "dist": 0.47}
+    { "name": "keyboard", "bbox": [0.10,0.47,0.12,0.33], "dist": 1.81 },
+    { "name": "apple", "bbox": [0.88,0.62,0.12,0.24], "dist": 0.47 }
   ],
   "nav": {
     "current_wp": 1,
@@ -167,8 +167,8 @@ Check if there is any person in the hallway, if so take a picture of him and rep
 	"posture": "standing"
   },
   "perception": [
-	{"name": "person", "bbox": [0.57, 0.43, 0.18, 0.70], "dist": 1.18},
-	{"name": "apple", "bbox": [0.29, 0.52, 0.11, 0.22], "dist": 0.62}
+	{ "name": "person", "bbox": [0.57, 0.43, 0.18, 0.70], "dist": 1.18 },
+	{ "name": "apple", "bbox": [0.29, 0.52, 0.11, 0.22], "dist": 0.62 }
   ],
   "nav": {
 	"current_wp": 3,
@@ -210,7 +210,7 @@ Turn to your favorite fruit if you see one.
 		"name": "DEFAULT",
 		"action": "do whatever you think is best",
 		"action_history": [
-		    {"start": "14:15:53", "end": "14:16:08", "action": "look_object('apple')", "status": "in-progress"},
+		    {"start": "14:15:53", "end": "None", "action": "look_object('apple')", "status": "in-progress"},
 		]
 	}
 }
@@ -222,10 +222,8 @@ Turn to your favorite fruit if you see one.
 	"posture": "standing"
   },
   "perception": [
-	{"name": "banana", "bbox": [0.57, 0.43, 0.18, 0.70], "dist": 1.18},
-	{
-	  "name": "apple", "bbox": [0.29, 0.52, 0.11, 0.22], "dist": 0.62
-	}
+	{ "name": "banana", "bbox": [0.57, 0.43, 0.18, 0.70], "dist": 1.18 },
+	{ "name": "apple", "bbox": [0.29, 0.52, 0.11, 0.22], "dist": 0.62 }
   ],
   "nav": {
 	"current_wp": 5,
@@ -245,6 +243,62 @@ Turn to your favorite fruit if you see one.
 ```json
 {
 	"action": "look_object('banana')",
-	"trans": "null"
+	"trans": null
+}
+```
+
+
+------------
+# EXAMPLE 5
+## CURRENT USER INSTRUCTION
+Turn to your favorite fruit if you see one.
+
+## GUIDELINES
+(1) Prefer apple over banana.
+(2) Energetic and curious; explore when safe.
+
+## HIGH-LEVEL PLAN
+{
+	"variables": {},
+	"global_trans": [],
+	"current_state": {
+		"name": "DEFAULT",
+		"action": "do whatever you think is best",
+		"action_history": [
+		    {"start": "14:15:53", "end": "14:16:08", "action": "look_object('apple')", "status": "stopped"},
+			{"start": "14:16:12", "end": "14:16:45", "action": "look_object('banana')", "status": "success"}
+		]
+	}
+}
+
+## OBSERVATION
+{
+  "t": "14:16:46",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{ "name": "banana", "bbox": [0.57, 0.43, 0.18, 0.70], "dist": 1.18 },
+	{ "name": "apple", "bbox": [0.29, 0.52, 0.11, 0.22], "dist": 0.62 }
+  ],
+  "nav": {
+	"current_wp": 5,
+	"waypoints": [
+		{"id": 1, "label": "room"},
+		{"id": 2, "label": "hallway"},
+		{"id": 3, "label": "hallway"},
+		{"id": 4, "label": "hallway"},
+		{"id": 7, "label": "hallway"},
+		{"id": 8, "label": "hallway"},
+		{"id": 12, "label": "hallway"}
+	]
+  }
+}
+
+## OUTPUT
+```json
+{
+	"action": null,
+	"trans": "DONE"
 }
 ```
