@@ -3,136 +3,125 @@
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
 #include <atomic>
+#include <thread>
 
-class GStreamerNode : public rclcpp::Node {
+class GStreamerStream {
 public:
-    GStreamerNode() : Node("gstreamer_node") {
-        // QoS optimized for low latency
-        auto qos = rclcpp::QoS(rclcpp::KeepLast(1))
-                    .best_effort()
-                    .durability_volatile();
+    GStreamerStream(rclcpp::Node* node,
+                    const std::string& topic_name,
+                    const std::string& encoding,
+                    const std::string& iface,
+                    int port)
+        : node_(node), encoding_(encoding)
+    {
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
+        publisher_ = node_->create_publisher<sensor_msgs::msg::Image>(topic_name, qos);
 
-        publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", qos);
-
-        gst_init(nullptr, nullptr);
-
-        const char* interface = std::getenv("GSTREAMER_INTERFACE");
-        std::string interface_str = interface ? std::string(interface) : "wlp38s0";
-
-        // Simplified pipeline - closer to your working gst-launch
         std::string pipeline_str =
-            "udpsrc address=230.1.1.2 port=1721 multicast-iface=" + interface_str + " "
+            "udpsrc address=230.1.1.1 port=" + std::to_string(port) +
+            " multicast-iface=" + iface + " "
             "! application/x-rtp, media=video, encoding-name=H264 "
             "! rtph264depay "
             "! h264parse "
             "! avdec_h264 "
             "! videoconvert "
-            "! video/x-raw, format=BGR "
+            "! video/x-raw,format=" + (encoding == "bgr8" ? "BGR" : "GRAY8") + " "
             "! appsink name=appsink sync=false max-buffers=1 drop=true";
 
         GError* error = nullptr;
         pipeline_ = gst_parse_launch(pipeline_str.c_str(), &error);
         if (!pipeline_ || error) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to create GStreamer pipeline: %s", error->message);
-            g_clear_error(&error);
+            RCLCPP_ERROR(node_->get_logger(), "Failed to create GStreamer pipeline on port %d: %s",
+                         port, error ? error->message : "unknown error");
+            if (error) g_clear_error(&error);
             return;
         }
 
         appsink_ = gst_bin_get_by_name(GST_BIN(pipeline_), "appsink");
-        
-        // Set pipeline to PLAYING state first
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 
-        // Create a timer to poll for samples instead of callbacks
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(10),  // 100Hz polling
-            std::bind(&GStreamerNode::timer_callback, this)
-        );
+        thread_ = std::thread([this]() { run(); });
 
-        RCLCPP_INFO(this->get_logger(), "GStreamer node started");
+        RCLCPP_INFO(node_->get_logger(), "Started GStreamer stream on port %d", port);
     }
 
-    ~GStreamerNode() {
-        if (timer_) {
-            timer_->cancel();
-        }
+    ~GStreamerStream() {
+        running_ = false;
+        if (thread_.joinable()) thread_.join();
         gst_element_set_state(pipeline_, GST_STATE_NULL);
-        gst_object_unref(appsink_);
-        gst_object_unref(pipeline_);
+        if (appsink_) gst_object_unref(appsink_);
+        if (pipeline_) gst_object_unref(pipeline_);
     }
 
 private:
-    void timer_callback() {
-        GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink_), 0);
-        if (sample) {
-            process_sample(sample);
-            gst_sample_unref(sample);
-            frame_count_++;
-            
-            // Log frame rate every 100 frames
-            static auto last_time = std::chrono::steady_clock::now();
-            if (frame_count_ % 100 == 0) {
-                auto now = std::chrono::steady_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time);
-                double fps = 100000.0 / duration.count();
-                RCLCPP_INFO(this->get_logger(), "Processing at %.1f FPS", fps);
-                last_time = now;
+    void run() {
+        while (rclcpp::ok() && running_) {
+            GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink_), 10 * GST_MSECOND);
+            if (!sample) continue;
+
+            GstBuffer* buffer = gst_sample_get_buffer(sample);
+            GstCaps* caps = gst_sample_get_caps(sample);
+            GstStructure* s = gst_caps_get_structure(caps, 0);
+
+            int width = 0, height = 0;
+            gst_structure_get_int(s, "width", &width);
+            gst_structure_get_int(s, "height", &height);
+
+            GstMapInfo map;
+            if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+                gst_sample_unref(sample);
+                continue;
             }
+
+            sensor_msgs::msg::Image msg;
+            msg.header.stamp = node_->get_clock()->now();
+            msg.header.frame_id = encoding_ == "bgr8" ? "color_frame" : "depth_frame";
+            msg.height = height;
+            msg.width = width;
+            msg.encoding = encoding_;
+            msg.is_bigendian = false;
+            msg.step = width * (encoding_ == "bgr8" ? 3 : 1);
+            msg.data.assign(map.data, map.data + map.size);
+
+            gst_buffer_unmap(buffer, &map);
+            gst_sample_unref(sample);
+
+            publisher_->publish(msg);
         }
     }
 
-    void process_sample(GstSample* sample) {
-        GstBuffer* buffer = gst_sample_get_buffer(sample);
-        GstCaps* caps = gst_sample_get_caps(sample);
-        GstStructure* s = gst_caps_get_structure(caps, 0);
-
-        int width, height;
-        if (!gst_structure_get_int(s, "width", &width) ||
-            !gst_structure_get_int(s, "height", &height)) {
-            return;
-        }
-
-        GstMapInfo map;
-        if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-            return;
-        }
-
-        // Pre-allocate message
-        msg_.header.stamp = this->now();
-        msg_.header.frame_id = "base_link";
-        msg_.height = height;
-        msg_.width = width;
-        msg_.encoding = "bgr8";
-        msg_.is_bigendian = false;
-        msg_.step = width * 3;
-
-        // Direct copy without intermediate allocation
-        msg_.data.resize(map.size);
-
-        std::memcpy(msg_.data.data(), map.data, map.size);
-
-        gst_buffer_unmap(buffer, &map);
-        
-        // auto t7 = std::chrono::steady_clock::now();
-        // Publish directly
-        publisher_->publish(msg_);
-        // auto t_end = std::chrono::steady_clock::now();
-        // auto dur8 = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t7).count();
-        // RCLCPP_INFO(this->get_logger(), "Publish took %ld ms", dur8 / 1000);
-    }
-
+    rclcpp::Node* node_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
-    rclcpp::TimerBase::SharedPtr timer_;
-    GstElement* pipeline_ = nullptr;
-    GstElement* appsink_ = nullptr;
-    std::atomic<uint64_t> frame_count_{0};
-    sensor_msgs::msg::Image msg_;
+    GstElement* pipeline_{nullptr};
+    GstElement* appsink_{nullptr};
+    std::thread thread_;
+    std::atomic<bool> running_{true};
+    std::string encoding_;
+};
+
+class DualGStreamerNode : public rclcpp::Node {
+public:
+    DualGStreamerNode() : Node("dual_gstreamer_node") {
+        gst_init(nullptr, nullptr);
+        const char* iface = std::getenv("GSTREAMER_INTERFACE");
+        std::string interface_str = iface ? iface : "wlp38s0";
+
+        color_stream_ = std::make_unique<GStreamerStream>(this,
+                        "/camera/color/image_raw", "bgr8", interface_str, 1722);
+        depth_stream_ = std::make_unique<GStreamerStream>(this,
+                        "/camera/depth/image_raw", "mono8", interface_str, 1723);
+
+        RCLCPP_INFO(this->get_logger(), "Dual GStreamer node initialized.");
+    }
+
+private:
+    std::unique_ptr<GStreamerStream> color_stream_;
+    std::unique_ptr<GStreamerStream> depth_stream_;
 };
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<GStreamerNode>();
-    rclcpp::spin(node);
+    rclcpp::spin(std::make_shared<DualGStreamerNode>());
     rclcpp::shutdown();
     return 0;
 }
