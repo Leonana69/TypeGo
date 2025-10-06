@@ -4,6 +4,7 @@
 #include <gst/app/gstappsink.h>
 #include <atomic>
 #include <thread>
+#include <cstring>
 
 class GStreamerStream {
 public:
@@ -11,12 +12,16 @@ public:
                     const std::string& topic_name,
                     const std::string& encoding,
                     const std::string& iface,
-                    int port)
-        : node_(node), encoding_(encoding)
+                    int port,
+                    bool is_depth = false)
+        : node_(node), encoding_(encoding), is_depth_(is_depth)
     {
         auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
         publisher_ = node_->create_publisher<sensor_msgs::msg::Image>(topic_name, qos);
 
+        // For depth, we receive BGR (containing packed depth), for color we receive BGR
+        std::string format = (encoding == "bgr8" || is_depth) ? "BGR" : "GRAY8";
+        
         std::string pipeline_str =
             "udpsrc address=230.1.1.1 port=" + std::to_string(port) +
             " multicast-iface=" + iface + " "
@@ -25,7 +30,7 @@ public:
             "! h264parse "
             "! avdec_h264 "
             "! videoconvert "
-            "! video/x-raw,format=" + (encoding == "bgr8" ? "BGR" : "GRAY8") + " "
+            "! video/x-raw,format=" + format + " "
             "! appsink name=appsink sync=false max-buffers=1 drop=true";
 
         GError* error = nullptr;
@@ -75,13 +80,33 @@ private:
 
             sensor_msgs::msg::Image msg;
             msg.header.stamp = node_->get_clock()->now();
-            msg.header.frame_id = encoding_ == "bgr8" ? "color_frame" : "depth_frame";
+            msg.header.frame_id = is_depth_ ? "depth_frame" : "color_frame";
             msg.height = height;
             msg.width = width;
-            msg.encoding = encoding_;
-            msg.is_bigendian = false;
-            msg.step = width * (encoding_ == "bgr8" ? 3 : 1);
-            msg.data.assign(map.data, map.data + map.size);
+
+            if (is_depth_) {
+                // 8-bit grayscale
+                msg.encoding = "8UC1";
+                msg.is_bigendian = false;
+                msg.step = width;
+
+                // Allocate space for 8-bit depth data
+                msg.data.resize(width * height);
+                uint8_t* depth_ptr = reinterpret_cast<uint8_t*>(msg.data.data());
+
+                // Convert BGR to grayscale (take any channel since they're all the same)
+                // Then scale back to millimeters: grayscale_value = depth_in_mm / 25
+                for (int i = 0; i < width * height; ++i) {
+                    uint8_t gray_value = map.data[i * 3];  // Take B channel (all BGR channels are same)
+                    depth_ptr[i] = static_cast<uint8_t>(gray_value);  // Convert back to mm
+                }
+            } else {
+                // Regular color image
+                msg.encoding = encoding_;
+                msg.is_bigendian = false;
+                msg.step = width * 3;
+                msg.data.assign(map.data, map.data + map.size);
+            }
 
             gst_buffer_unmap(buffer, &map);
             gst_sample_unref(sample);
@@ -97,6 +122,7 @@ private:
     std::thread thread_;
     std::atomic<bool> running_{true};
     std::string encoding_;
+    bool is_depth_;
 };
 
 class DualGStreamerNode : public rclcpp::Node {
@@ -107,9 +133,9 @@ public:
         std::string interface_str = iface ? iface : "wlp38s0";
 
         color_stream_ = std::make_unique<GStreamerStream>(this,
-                        "/camera/color/image_raw", "bgr8", interface_str, 1722);
+                        "/camera/color/image_raw", "bgr8", interface_str, 1722, false);
         depth_stream_ = std::make_unique<GStreamerStream>(this,
-                        "/camera/depth/image_raw", "mono8", interface_str, 1723);
+                        "/camera/depth/image_raw", "16UC1", interface_str, 1723, true);
 
         RCLCPP_INFO(this->get_logger(), "Dual GStreamer node initialized.");
     }

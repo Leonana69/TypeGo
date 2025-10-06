@@ -57,17 +57,28 @@ class Go2Observation(RobotObservation):
         self.map2odom_rotation = np.array([0.0, 0.0, 0.0, 1.0])
         self.odom2robot_translation = np.array([0.0, 0.0, 0.0])
         self.odom2robot_rotation = np.array([0.0, 0.0, 0.0, 1.0])
-        # Subscribe to /camera/image_raw
+
+        best_effort_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+
+        # Get colored image
         node.create_subscription(
             ROSImage,
-            '/camera/image_raw',
+            '/camera/color/image_raw',
             self._image_callback,
-            QoSProfile(
-                history=HistoryPolicy.KEEP_LAST,
-                depth=1,
-                reliability=ReliabilityPolicy.BEST_EFFORT,
-                durability=DurabilityPolicy.VOLATILE,
-            )
+            best_effort_qos
+        )
+
+        # Get depth image
+        node.create_subscription(
+            ROSImage,
+            '/camera/depth/image_raw',
+            self._depth_callback,
+            best_effort_qos
         )
 
         # Subscribe to /tf
@@ -103,12 +114,7 @@ class Go2Observation(RobotObservation):
             LaserScan,
             '/scan',
             self._scan_callback,
-            QoSProfile(
-                history=HistoryPolicy.KEEP_LAST,
-                depth=10,
-                reliability=ReliabilityPolicy.BEST_EFFORT,
-                durability=DurabilityPolicy.VOLATILE,
-            )
+            best_effort_qos
         )
 
         # Subscribe to /voice_command
@@ -144,9 +150,16 @@ class Go2Observation(RobotObservation):
     def _image_callback(self, msg: ROSImage):
         # Convert ROS Image message to OpenCV image
         cv_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
-        # Undistort the image
-        frame = self.image_recover.process(cv_image)
+        # Undistort the image if using go2 camera
+        # frame = self.image_recover.process(cv_image)
+        # Raw image if using d435i
+        frame = cv_image
         self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+
+    def _depth_callback(self, msg: ROSImage):
+        # Convert ROS Image message to OpenCV image
+        depth_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width)
+        self.depth = depth_image.astype(np.float32) * 25.0  # Convert mm to meters
 
     def _tf_callback(self, msg: TFMessage):
         def make_transform(translation, quaternion):
@@ -278,7 +291,7 @@ class Go2Observation(RobotObservation):
 
     @overrides
     async def process_image(self, image: Image.Image):
-        await self.yolo_client.detect(image)
+        await self.yolo_client.detect(image, self._depth)
     
     @overrides
     def fetch_processed_result(self) -> tuple[Image.Image, list] | None:

@@ -134,37 +134,68 @@ class YoloClient():
         return imgByteArr.getvalue()
 
     @staticmethod
-    def plot_results_ps(image: Image.Image, object_list: list[ObjectInfo]) -> Image.Image:
-        if len(object_list) == 0:
+    def plot_results_ps(image: Image.Image, object_list: list["ObjectInfo"]) -> Image.Image:
+        if not object_list:
             return image
 
-        def str_float_to_int(value, multiplier):
-            return int(float(value) * multiplier)
+        # --- Scale image by 2x ---
+        w, h = image.size
+        new_size = (w * 2, h * 2)
+        image = image.resize(new_size, Image.LANCZOS)
+        w, h = new_size
 
         draw = ImageDraw.Draw(image)
-        w, h = image.size
+
+        def scale_coord(cx, cy, bw, bh, width, height):
+            """Convert normalized center coords to pixel box corners."""
+            x1 = int((cx - bw / 2) * width)
+            y1 = int((cy - bh / 2) * height)
+            x2 = int((cx + bw / 2) * width)
+            y2 = int((cy + bh / 2) * height)
+            return x1, y1, x2, y2
+
+        def get_text_size(text, font):
+            """Return (width, height) for text with the given font (Pillow ≥10 compatible)."""
+            bbox = font.getbbox(text)
+            width = bbox[2] - bbox[0]
+            height = bbox[3] - bbox[1]
+            return width, height
 
         for obj in object_list:
-            x1 = str_float_to_int(obj.cx - obj.w / 2, w)
-            y1 = str_float_to_int(obj.cy - obj.h / 2, h)
-            x2 = str_float_to_int(obj.cx + obj.w / 2, w)
-            y2 = str_float_to_int(obj.cy + obj.h / 2, h)
+            x1, y1, x2, y2 = scale_coord(obj.cx, obj.cy, obj.w, obj.h, w, h)
 
             # Draw bounding box
-            draw.rectangle([x1, y1, x2, y2], outline='#00FFFF', width=6)
+            draw.rectangle([x1, y1, x2, y2], outline="#00FFFF", width=6)
 
-            # Draw label and depth
-            label = f"{obj.name}"
-            if obj.depth is not None:
+            # Prepare label text
+            label = obj.name
+            if getattr(obj, "depth", None) is not None:
                 label += f" ({obj.depth:.2f}m)"
 
-            # label += f" ({obj.x:.2f}, {obj.y:.2f})"
+            # Determine label position
+            text_w, text_h = get_text_size(label, FONT)
+            box_h = y2 - y1
+            box_w = x2 - x1
 
-            draw_y = y1 - 40 if y1 - 40 > 0 else y2 + 10
-            draw.text((x1, draw_y), label, fill='red', font=FONT)
+            # If box is tall enough, draw text inside top-left corner
+            if box_h > text_h * 1.5 and box_w > text_w + 10:
+                text_x, text_y = x1 + 5, y1 + 5
+                bg_y1, bg_y2 = text_y - 2, text_y + text_h + 2
+            else:
+                # Otherwise draw above the box (or below if near top edge)
+                text_y = y1 - text_h - 8 if y1 - text_h - 8 > 0 else y2 + 8
+                text_x = x1
+                bg_y1, bg_y2 = text_y - 2, text_y + text_h + 2
+
+            # Background rectangle for better readability
+            bg_x1, bg_x2 = text_x - 2, text_x + text_w + 4
+            draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2], fill="black")
+
+            # Draw text label
+            draw.text((text_x, text_y), label, fill="red", font=FONT)
 
         return image
-    
+
     @staticmethod
     def cc_to_ps(result: list) -> list[ObjectInfo]:
         return [
@@ -193,11 +224,11 @@ class YoloClient():
         except aiohttp.ServerTimeoutError:
             print_t(f"[Y] Timeout error when connecting to {service_url}")
 
-    async def detect(self, image: Image.Image, conf=0.3):
+    async def detect(self, image: Image.Image, depth: Optional[np.ndarray] = None, conf=0.3):
         # Prepare image and config while not holding the lock
         config = {
             'robot_info': self.robot_info.robot_id,
-            'service_type': 'yolo3d',
+            'service_type': 'yolo',
             'tracking_mode': False,
             'image_id': 0,
             'conf': conf
@@ -227,5 +258,33 @@ class YoloClient():
             print_t(f"[Y] Missing image_id in results: {json_results}")
             return
         
+        results = json_results.get('result', [])
+        if depth is not None and len(depth.shape) == 2:
+            H, W = depth.shape
+            for obj in results:
+                box = obj['box']
+                # Convert normalized coordinates [0,1] → pixel coordinates
+                x1, y1 = int(box['x1'] * W), int(box['y1'] * H)
+                x2, y2 = int(box['x2'] * W), int(box['y2'] * H)
+
+                # Ensure bounds are valid
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(W - 1, x2), min(H - 1, y2)
+
+                roi = depth[y1:y2, x1:x2]
+                if roi.size > 0:
+                    valid_depths = roi[roi > 0]  # filter invalid pixels
+                    if valid_depths.size > 0:
+                        median_depth_mm = np.median(valid_depths)
+                        obj['depth'] = float(median_depth_mm / 1000.0)
+                    else:
+                        obj['depth'] = None
+                else:
+                    obj['depth'] = None
+        else:
+            for obj in results:
+                obj['depth'] = None
+
+        # print_t(f"[Y] Detection results for image_id {json_results['image_id']}: {json_results.get('result', [])}")
         async with self._latest_result_lock:
             self._latest_result = (image, self.cc_to_ps(json_results["result"]))
