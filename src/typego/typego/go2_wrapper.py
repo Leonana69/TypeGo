@@ -86,12 +86,7 @@ class Go2Observation(RobotObservation):
             TFMessage,
             '/tf',
             self._tf_callback,
-            QoSProfile(
-                history=HistoryPolicy.KEEP_LAST,
-                depth=100,
-                reliability=ReliabilityPolicy.BEST_EFFORT,
-                durability=DurabilityPolicy.VOLATILE,
-            )
+            best_effort_qos
         )
 
         # Subscribe to /map
@@ -464,6 +459,7 @@ class Go2Wrapper(RobotWrapper):
         self.node = rclpy.create_node('go2')
 
         # Create a subscription to the cmd_vel topic, working with Nav2
+        self.accept_cmd_vel = False
         self.node.create_subscription(
             Twist,
             '/cmd_vel',
@@ -474,6 +470,8 @@ class Go2Wrapper(RobotWrapper):
         self.navigate_client = ActionClient(self.node, NavigateToPose, 'navigate_to_pose')
 
     def _cmd_vel_callback(self, msg: Twist):
+        if not self.accept_cmd_vel:
+            return
         if msg.linear.x == 0.0 and msg.linear.y == 0.0 and msg.angular.z == 0.0:
             return
         control = {
@@ -925,65 +923,101 @@ class Go2Wrapper(RobotWrapper):
         if wp is None:
             print_t(f"Waypoint {id} not found")
             return False
-        return self._goto(wp.x, wp.y, 30.0, pause_event=pause_event, stop_event=stop_event)
+        self.accept_cmd_vel = True
+        ret = self._goto(wp.x, wp.y, 30.0, pause_event=pause_event, stop_event=stop_event)
+        self.accept_cmd_vel = False
+        self._go2_command("stop")
+        return ret
 
-    def _goto(self, x: float, y: float, timeout_sec: float, pause_event: threading.Event, stop_event: threading.Event) -> bool:
+    def _goto(self, x: float, y: float, timeout_sec: float,
+          pause_event: threading.Event, stop_event: threading.Event) -> bool:
         print(f"-> Go to ({x}, {y})")
-
-        goal_msg = NavigateToPose.Goal()
-        goal_msg.pose.header.frame_id = 'map'
-        goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = x
-        goal_msg.pose.pose.position.y = y
-        goal_msg.pose.pose.orientation.z = 0.0
-        goal_msg.pose.pose.orientation.w = 1.0
-
         self.navigate_client.wait_for_server()
 
-        done_event = threading.Event()
-        result_status = {"status": None}
-        goal_handle_container = {}
+        def send_goal():
+            goal_msg = NavigateToPose.Goal()
+            goal_msg.pose.header.frame_id = 'map'
+            goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
+            goal_msg.pose.pose.position.x = x
+            goal_msg.pose.pose.position.y = y
+            goal_msg.pose.pose.orientation.z = 0.0
+            goal_msg.pose.pose.orientation.w = 1.0
+            return self.navigate_client.send_goal_async(goal_msg)
 
-        def goal_response_callback(future):
-            goal_handle = future.result()
-            if not goal_handle.accepted:
-                print_t("Navigation: Goal rejected")
-                result_status["status"] = False
-                done_event.set()
-                return
-
-            goal_handle_container["handle"] = goal_handle  # Save for timeout/cancel
-            result_future = goal_handle.get_result_async()
-
-            def result_callback(result_future):
-                result = result_future.result()
-                goal_id = goal_handle.goal_id
-                if result.status == GoalStatus.STATUS_SUCCEEDED:  # Use enum for clarity
-                    print_t("Navigation: Goal succeeded")
-                    result_status["status"] = True
-                else:
-                    print_t(f"Navigation: Goal failed with status {result.status}")
+        def setup_goal_callbacks(send_goal_future, done_event, result_status, goal_handle_container):
+            def goal_response_callback(future):
+                goal_handle = future.result()
+                if not goal_handle.accepted:
+                    print_t("Navigation: Goal rejected")
                     result_status["status"] = False
-                done_event.set()
+                    done_event.set()
+                    return
 
-            result_future.add_done_callback(result_callback)
+                goal_handle_container["handle"] = goal_handle
+                result_future = goal_handle.get_result_async()
 
-        send_goal_future = self.navigate_client.send_goal_async(goal_msg)
-        send_goal_future.add_done_callback(goal_response_callback)
+                def result_callback(result_future):
+                    result = result_future.result()
+                    if result.status == GoalStatus.STATUS_SUCCEEDED:
+                        print_t("Navigation: Goal succeeded")
+                        result_status["status"] = True
+                    elif result.status == GoalStatus.STATUS_CANCELED:
+                        print_t("Navigation: Goal canceled (pause or stop)")
+                        # Do NOT set done_event for pause; handled outside
+                    else:
+                        print_t(f"Navigation: Goal failed (status {result.status})")
+                        result_status["status"] = False
+                    done_event.set()
+
+                result_future.add_done_callback(result_callback)
+
+            send_goal_future.add_done_callback(goal_response_callback)
 
         start_time = time.time()
-        while not done_event.is_set():
-            if stop_event.is_set() or time.time() - start_time > timeout_sec:
-                print_t("Navigation: Stopped")
-                break
-            if pause_event.is_set():
-                time.sleep(0.1)
-                continue
-            time.sleep(0.01)
+        paused = False
+        result_status = {"status": None}
 
-        if not done_event.is_set():
-            goal_handle = goal_handle_container.get("handle")
-            if goal_handle and goal_handle.accepted:
-                goal_handle.cancel_goal_async()
-            result_status["status"] = False
+        while not stop_event.is_set():
+            done_event = threading.Event()
+            goal_handle_container = {}
+            send_goal_future = send_goal()
+            setup_goal_callbacks(send_goal_future, done_event, result_status, goal_handle_container)
+
+            # Wait until goal finishes, paused, or timeout
+            while not done_event.is_set():
+                if stop_event.is_set() or (time.time() - start_time > timeout_sec):
+                    print_t("Navigation: Stop signal or timeout")
+                    goal_handle = goal_handle_container.get("handle")
+                    if goal_handle:
+                        goal_handle.cancel_goal_async()
+                    result_status["status"] = False
+                    done_event.set()
+                    break
+
+                if pause_event.is_set():
+                    if not paused:
+                        paused = True
+                        print_t("Navigation: Pausing...")
+                        goal_handle = goal_handle_container.get("handle")
+                        if goal_handle:
+                            goal_handle.cancel_goal_async()
+                    time.sleep(0.1)
+                    continue
+
+                time.sleep(0.05)
+
+            if paused:
+                # Wait until resume
+                while pause_event.is_set() and not stop_event.is_set():
+                    time.sleep(0.1)
+                if stop_event.is_set():
+                    break
+                paused = False
+                print_t("Navigation: Resuming... re-sending goal")
+                continue  # restart new goal loop from top
+
+            # Exit if succeeded or failed
+            if result_status["status"] is not None:
+                break
+
         return result_status["status"]
