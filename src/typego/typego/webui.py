@@ -15,31 +15,16 @@ from typego.frontend_message import try_get
 
 CURRENT_DIR = get_package_share_directory('typego')
 
-def get_local_ip():
-    """Detect the outward-facing IP address of this machine."""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # connect to an external address (doesn't need to be reachable)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = "127.0.0.1"
-    finally:
-        s.close()
-    return ip
-
 def generate_povs():
     """Generate HTML string for the robot POV."""
-    remote_ip = get_local_ip()
-
     html_content = "<h2>Robot POV</h2><div style='display: flex; gap: 10px;'>"
     html_content += f"""
     <div style="flex: 0 0 70%;">
-        <img src="http://{remote_ip}:50000/robot-pov/" alt="robot-pov" 
+        <img src="http://localhost:50000/robot-pov/" alt="robot-pov" 
              style="border-radius: 10px; object-fit: contain; width: 100%;">
     </div>
     <div style="flex: 0 0 30%;">
-        <img src="http://{remote_ip}:50000/robot-map/" alt="robot-map" 
+        <img src="http://localhost:50000/robot-map/" alt="robot-map" 
              style="border-radius: 10px; object-fit: contain; width: 100%;">
     </div>
     """

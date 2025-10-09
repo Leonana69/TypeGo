@@ -428,10 +428,13 @@ class Go2Wrapper(RobotWrapper):
         self.action_lock = threading.RLock()
 
         # Connect to the robot control API
-        extra = self.robot_info.extra
-        if "url" not in extra:
-            raise ValueError("Control url must be provided in extra")
-        self.robot_url = extra["url"]
+        GO2_IP = os.environ.get("GO2_IP")
+        GO2_CONTROL_PORT = 18080
+
+        if not GO2_IP:
+            raise RuntimeError("GO2_IP environment variable not set.")
+
+        self.robot_url = f"http://{GO2_IP}:{GO2_CONTROL_PORT}/"
         try:
             response = requests.get(self.robot_url)
             if response.status_code != 200:

@@ -1,4 +1,19 @@
-.PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build, build
+SHELL := /bin/zsh
+
+# --- Default environment setup ---
+ENV_FILE := ./docker/.env
+SETUP_FILE := ./install/setup.zsh  # can also be setup.bash if preferred
+
+.PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build, build, typego
+
+typego:
+	make build
+	@{ \
+		echo "→ Loading $(ENV_FILE)"; \
+		set -a; source $(ENV_FILE); set +a; \
+		source $(SETUP_FILE); \
+		ros2 run typego webui; \
+	}
 
 build:
 	colcon build
