@@ -82,7 +82,7 @@ public:
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/map", 10, std::bind(&AdaptiveWaypointNode::map_callback, this, std::placeholders::_1));
         image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/image_raw",
+            "/camera/color/image_raw",
             rclcpp::QoS(10).reliability(rclcpp::ReliabilityPolicy::BestEffort),
             std::bind(&AdaptiveWaypointNode::image_callback, this, std::placeholders::_1));
         timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&AdaptiveWaypointNode::on_timer, this));
@@ -239,6 +239,8 @@ private:
                 save_waypoints(waypoint_file_);
                 publish_waypoints();
             }).detach();
+        } else {
+            publish_waypoints();
         }
     }
 

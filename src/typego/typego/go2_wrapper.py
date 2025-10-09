@@ -148,18 +148,21 @@ class Go2Observation(RobotObservation):
         return command
 
     def _image_callback(self, msg: ROSImage):
-        # Convert ROS Image message to OpenCV image
+        """ Convert ROS Image message to PIL Image with undistortion. """
         cv_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
-        # Undistort the image if using go2 camera
+
+        # Undistort the image if using go2 native camera
         # frame = self.image_recover.process(cv_image)
+        
         # Raw image if using d435i
         frame = cv_image
+        
         self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
     def _depth_callback(self, msg: ROSImage):
-        # Convert ROS Image message to OpenCV image
+        """ Convert ROS Image message to depth numpy array in mm. """
         depth_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width)
-        self.depth = depth_image.astype(np.float32) * 25.0  # Convert mm to meters
+        self.depth = depth_image.astype(np.float32) * 25.0 # scale back
 
     def _tf_callback(self, msg: TFMessage):
         def make_transform(translation, quaternion):

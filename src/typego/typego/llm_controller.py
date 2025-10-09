@@ -116,7 +116,7 @@ class LLMController():
         # Enter S2S loop
         loop_freq = 0.5
         count = 0
-        while self.running and s2d_plan.is_active() and count < 3:
+        while self.running and s2d_plan.is_active() and count < 5:
             count += 1
             print_t(f"[C] S2S loop for task {inst} ({s2d_plan.id}), current state: {s2d_plan.current_state}")
             start_time = time.time()
