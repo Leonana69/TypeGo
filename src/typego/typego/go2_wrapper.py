@@ -106,7 +106,7 @@ class Go2Observation(RobotObservation):
             WayPointArray,
             '/waypoints',
             self._waypoint_callback,
-            10
+            best_effort_qos
         )
 
         # Subscribe to /scan
