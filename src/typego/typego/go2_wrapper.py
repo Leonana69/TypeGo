@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 from overrides import overrides
 from PIL import Image
@@ -441,8 +442,8 @@ class Go2(RobotWrapper):
         self.command_thread = threading.Thread(target=self.command_sender)
 
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
-        
-        self.pid_yaw = PID(10.0, 0.0, 0.0, 10.0, 10.0, 0.5, 2.0)
+
+        self.pid_yaw = PID(10.0, 0.0, 0.0, 10.0, 10.0, 0.5, 1.0)
         self.pid_x = PID(2.0, 1.0, 0.1, 10.0, 10.0, 0.5, 2.0)
         self.pid_y = PID(2.0, 1.0, 0.1, 10.0, 10.0, 0.5, 2.0)
 
@@ -480,8 +481,8 @@ class Go2(RobotWrapper):
         self.command_thread.start()
         print_t("[Go2] Robot is ready.")
 
-        time.sleep(2.0)
-        self.walk_rotate(30, 0.15)
+        time.sleep(1.0)
+        self.registry.execute("search('sports ball')")
 
         return True
 
@@ -730,12 +731,14 @@ class Go2(RobotWrapper):
     @robot_skill("turn_left", description="Rotate counter-clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
     @go2action
     def turn_left(self, deg: float, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        return self._rotate(deg, pause_event, stop_event)
+        # return self._rotate(deg, pause_event, stop_event)
+        return self._walk_rotate(deg, pause_event, stop_event)
 
     @robot_skill("turn_right", description="Rotate clockwise by a certain angle (degrees)", subsystem=SubSystem.MOVEMENT)
     @go2action
     def turn_right(self, deg: float, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        return self._rotate(-deg, pause_event, stop_event)
+        # return self._rotate(-deg, pause_event, stop_event)
+        return self._walk_rotate(-deg, pause_event, stop_event)
 
     def _rotate(self, deg: float, pause_event: Optional[threading.Event], stop_event: threading.Event) -> bool:
         """
@@ -794,7 +797,8 @@ class Go2(RobotWrapper):
     @robot_skill("search", description="Rotate to find a specific object when it's not in current view.")
     @go2action
     def search(self, object: str, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        for _ in range(12):
+        rand_turn = random.choice([self.turn_left, self.turn_right])
+        for _ in range(10):
             if stop_event.is_set():
                 return False
             if pause_event.is_set():
@@ -802,7 +806,7 @@ class Go2(RobotWrapper):
                 continue
             if self.get_obj_info(object) is not None:
                 return True
-            self._rotate(30, pause_event, stop_event)
+            rand_turn(45, pause_event, stop_event)
         return False
 
     @robot_skill("follow", description="Follow a specific object.", subsystem=SubSystem.MOVEMENT)
@@ -846,9 +850,9 @@ class Go2(RobotWrapper):
                 current_pitch = 0.2
                 self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
                 if last_seen_cx - 0.5 < 0.0:
-                    self._rotate(30, pause_event, stop_event)
+                    self.turn_left(30, pause_event, stop_event)
                 else:
-                    self._rotate(-30, pause_event, stop_event)
+                    self.turn_right(30, pause_event, stop_event)
             time.sleep(max(0, 0.1 - (time.time() - cycle_start_time)))
         self._go2_command("stop")
         return True
@@ -1018,9 +1022,10 @@ class Go2(RobotWrapper):
 
         return result_status["status"]
 
-    def walk_rotate(self, deg: float, forward_speed: float,
+    def _walk_rotate(self, deg: float,
                     pause_event: threading.Event, 
-                    stop_event: threading.Event) -> bool:
+                    stop_event: threading.Event,
+                    forward_speed: float = 0.3) -> bool:
         """
         Walks forward slightly while rotating by the specified angle (in degrees).
         Produces a more natural, dog-like turning movement.
@@ -1031,7 +1036,6 @@ class Go2(RobotWrapper):
 
         accumulated_angle = 0.0
         previous_yaw = initial_yaw
-        direction = 1 if deg > 0 else -1
 
         while True:
             if stop_event.is_set():
@@ -1063,19 +1067,18 @@ class Go2(RobotWrapper):
             vyaw = self.pid_yaw.update(remaining_angle)
 
             # Gradually slow down near the target
-            slowdown_factor = max(0.2, min(1.0, abs(remaining_angle) / 0.5))
+            slowdown_factor = max(0.4, min(1.0, abs(remaining_angle) / 0.5))
             vx = forward_speed * slowdown_factor
             vyaw = vyaw * slowdown_factor
 
             # Forward motion while turning
             self._go2_command("nav", 
-                            vx=round(vx, 3) * direction, 
-                            vy=0.0, 
+                            vx=round(float(vx), 3), 
+                            vy=0.0,
                             vyaw=round(float(vyaw), 3))
             
             time.sleep(max(0, 0.1 - (time.time() - cycle_start)))
 
         # Stop smoothly
         self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
-        time.sleep(0.3)
         return True
