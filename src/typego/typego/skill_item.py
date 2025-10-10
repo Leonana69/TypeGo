@@ -7,7 +7,7 @@ import contextvars
 import uuid
 import itertools
 
-from typego.utils import log_error
+from typego.utils import log_error, print_t
 
 SKILL_ARG_TYPE: TypeAlias = int | float | str
 SKILL_RET_TYPE: TypeAlias = Optional[int | float | bool | str]
@@ -55,12 +55,13 @@ def wait_if_paused(sleep_s: float = 0.02):
 # =========================
 class SkillExecution:
     """Bookkeeping for an active skill."""
-    def __init__(self, exec_id: str, name: str, subsystem: SubSystem, thread: threading.Thread, control: SkillControl):
+    def __init__(self, exec_id: str, name: str, subsystem: SubSystem, thread: threading.Thread, control: SkillControl, task_id: int):
         self.id = exec_id
         self.name = name
         self.subsystem = subsystem
         self.thread = thread
         self.control = control
+        self.task_id = task_id
         self.started_at = time.time()
 
     def is_alive(self) -> bool:
@@ -87,6 +88,7 @@ class SkillRegistry:
         # ID generator
         self._exec_counter = itertools.count(1)
         self._executions: dict[str, SkillExecution] = {}  # id → execution
+        self._task_to_exec: dict[int, str] = {}  # task_id → exec_id
 
     def register(self, name: str, description: str = "",
                  params: dict | None = None,
@@ -182,12 +184,14 @@ class SkillRegistry:
         self,
         func_call: str,
         args: dict[str, Any] | None = None,
+        task_id: int = -1,
         callback: Optional[callable] = None
     ) -> dict[str, Any]:
         """Execute a registered skill asynchronously in a background thread.
         - Ensures exclusive subsystem execution (non-blocking BUSY).
         - Provides stop/pause control via threading.Event.
-        - Allows nested same-thread calls (RLock)."""
+        - Allows nested same-thread calls (RLock).
+        - If task_id matches an existing execution, stops it before starting new one."""
 
         # ---- Parse call ----
         if not args:
@@ -202,7 +206,7 @@ class SkillRegistry:
             arg_list = list(args.values())
             kwargs = dict(args)
 
-        print(f"[SkillRegistry] Executing skill '{name}' with args {arg_list or kwargs}")
+        print(f"[SkillRegistry] Executing skill '{name}' with args {arg_list or kwargs} for task_id={task_id}")
 
         if name == "continue":
             return {"ok": True, "id": "continue"}
@@ -212,17 +216,38 @@ class SkillRegistry:
             return {"ok": False, "error": f"unknown skill '{name}'"}
 
         subsystem = self._subsystems.get(name, SubSystem.DEFAULT)
+
+        # ---- Check for existing task with same task_id ----
+        old_exe = None
+        with self._active_guard:
+            if task_id in self._task_to_exec:
+                old_exec_id = self._task_to_exec[task_id]
+                old_exe = self._executions.get(old_exec_id)
+                if old_exe and old_exe.is_alive():
+                    print(f"[SkillRegistry] Task {task_id} already running as '{old_exe.name}' [{old_exec_id}], stopping it")
+                    old_exe.control.stop_event.set()
+        
+        # Wait for old task outside the lock to avoid deadlock
+        if old_exe and old_exe.is_alive():
+            old_exe.thread.join(timeout=2.0)
+            if old_exe.is_alive():
+                print(f"[SkillRegistry] Warning: Old task {task_id} did not stop in time")
+
+        # ---- Check if subsystem is available ----
+        lock = self._locks[subsystem]
+        if not lock.acquire(blocking=False):
+            with self._active_guard:
+                current_exe = self._active.get(subsystem)
+                current_task = current_exe.task_id if current_exe else None
+            print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY (task_id={current_task})")
+            return {"ok": False, "error": f"subsystem {subsystem.name} is busy", "busy": True, "current_task_id": current_task}
+
         control = SkillControl()
 
         # Generate unique ID
         exec_id = f"{name}-{next(self._exec_counter)}-{uuid.uuid4().hex[:6]}"
 
         def runner(callback: Optional[callable] = None):
-            lock = self._locks[subsystem]
-            if not lock.acquire(blocking=False):
-                print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY")
-                return
-
             token = _current_control.set(control)
             try:
                 fn = self._funcs[name]
@@ -233,7 +258,7 @@ class SkillRegistry:
                     kwargs["pause_event"] = control.pause_event
 
                 parsed = item.parse_args(arg_list) if arg_list else []
-                print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] in subsystem {subsystem.name}")
+                print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] for task_id={task_id} in subsystem {subsystem.name}")
                 ret = fn(*parsed, **kwargs) if kwargs else fn(*parsed)
                 if callback:
                     callback(ret)
@@ -242,20 +267,25 @@ class SkillRegistry:
             finally:
                 with self._active_guard:
                     self._active[subsystem] = None
+                    # Clean up task mapping
+                    if self._task_to_exec.get(task_id) == exec_id:
+                        del self._task_to_exec[task_id]
                 self._running[subsystem] = None
                 lock.release()
-                print(f"[SkillRegistry] Skill '{name}' [{exec_id}] finished, subsystem {subsystem.name} released")
+                _current_control.reset(token)
+                print(f"[SkillRegistry] Skill '{name}' [{exec_id}] for task_id={task_id} finished, subsystem {subsystem.name} released")
 
         t = threading.Thread(target=runner, daemon=True, args=(callback,))
-        exe = SkillExecution(exec_id, name, subsystem, t, control)
+        exe = SkillExecution(exec_id, name, subsystem, t, control, task_id)
 
         with self._active_guard:
             self._active[subsystem] = exe
             self._executions[exec_id] = exe
+            self._task_to_exec[task_id] = exec_id
         self._running[subsystem] = name
 
         t.start()
-        return {"ok": True, "id": exec_id}
+        return {"ok": True, "id": exec_id, "task_id": task_id}
     
     def get_status(self, exec_id: str) -> dict[str, Any]:
         exe = self._executions.get(exec_id)
@@ -266,6 +296,7 @@ class SkillRegistry:
             "id": exe.id,
             "name": exe.name,
             "subsystem": exe.subsystem.name,
+            "task_id": exe.task_id,
             "alive": exe.is_alive(),
             "started_at": exe.started_at,
         }

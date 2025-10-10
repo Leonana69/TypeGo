@@ -69,9 +69,10 @@ class LLMController():
         # self.vc_thread.start()
 
         # time.sleep(1.0)
-        # self.robot.registry.execute("turn_right(180)")
-        # self.robot.registry.execute("look_object('person')")
-        # print(self.robot.registry.execute("move_forward(0.2)"))
+        # self.robot.registry.execute("turn_right(180)", task_id=123)
+        # time.sleep(1.0)
+        # self.robot.registry.execute("look_object('person')", task_id=123)
+        # print(self.robot.registry.execute("move_forward(0.6)", task_id=124))
 
     def stop_controller(self):
         self.running = False
@@ -111,7 +112,7 @@ class LLMController():
         print_t(f"[S1] Plan: {s1_plan}")
         s2d_plan.add_action(s1_plan)
 
-        print(self.robot.registry.execute(s1_plan, callback=lambda r: s2d_plan.finish_action(r)))
+        print(self.robot.registry.execute(s1_plan, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r)))
 
         # Enter S2S loop
         loop_freq = 0.5
@@ -126,7 +127,7 @@ class LLMController():
             next_action = s2d_plan.process_s2s_response(plan)
             print_t(f"[S2S] Action: {next_action}")
             if next_action:
-                print(self.robot.registry.execute(next_action, callback=lambda r: s2d_plan.finish_action(r)))
+                print(self.robot.registry.execute(next_action, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r)))
 
             sleep_time = max(0, 1.0 / loop_freq - (time.time() - start_time))
             time.sleep(sleep_time)

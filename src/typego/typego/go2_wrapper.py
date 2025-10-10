@@ -1038,6 +1038,7 @@ class Go2(RobotWrapper):
         while True:
             if stop_event.is_set():
                 print_t("-> walk_rotate stopped by stop_event")
+                self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
                 return False
 
             if pause_event and pause_event.is_set():
