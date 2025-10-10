@@ -4,7 +4,7 @@ SHELL := /bin/zsh
 ENV_FILE := ./docker/.env
 SETUP_FILE := ./install/setup.zsh  # can also be setup.bash if preferred
 
-.PHONY: docker_stop, docker_start, docker_remove, docker_open, docker_build, build, typego
+.PHONY: docker_stop docker_start docker_remove docker_open docker_build build typego
 
 typego:
 	make build

@@ -88,19 +88,6 @@ class ObjectInfo:
             return self[key]
         except (KeyError, TypeError, IndexError):
             return default
-    
-class ObservationEncoder(JSONEncoder):
-    """Custom JSON encoder for ObjectInfo class"""
-    def default(self, obj):
-        if isinstance(obj, ObjectInfo):
-            return obj.to_dict()
-        elif isinstance(obj, (np.float32, np.float64, float)):
-            return round(float(obj), 2)
-        elif isinstance(obj, (np.int32, np.int64)):
-            return int(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super().default(obj)
 
 """
 Access the YOLO service through http.

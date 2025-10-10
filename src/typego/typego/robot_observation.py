@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from PIL import Image
+from json import JSONEncoder
 import time, threading
 import asyncio, cv2
 import numpy as np
@@ -12,6 +13,7 @@ import numpy as np
 from typego.robot_info import RobotInfo
 from typego.auto_lock_properties import auto_locked_properties
 from typego_interface.msg import WayPointArray, WayPoint
+from typego.yolo_client import ObjectInfo
 
 class RobotPosture(str, Enum):
     UNINIT = 'uninit'
@@ -27,6 +29,19 @@ class RobotPosture(str, Enum):
             return cls[s.upper()]
         except KeyError:
             raise ValueError(f"Unknown posture: {s}")
+
+class ObservationEncoder(JSONEncoder):
+    """Custom JSON encoder for ObjectInfo class"""
+    def default(self, obj):
+        if isinstance(obj, ObjectInfo):
+            return obj.to_dict()
+        elif isinstance(obj, (np.float32, np.float64, float)):
+            return round(float(obj), 2)
+        elif isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 @auto_locked_properties(
     copy_on_get={"orientation", "position"},                      # return defensive copies

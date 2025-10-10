@@ -5,7 +5,7 @@ from typego.llm_wrapper import LLMWrapper, ModelType
 from typego.utils import print_t
 from typego.robot_wrapper import RobotWrapper
 from typego.s2 import S2DPlan
-from typego.yolo_client import ObservationEncoder
+from typego.robot_observation import ObservationEncoder
 
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')

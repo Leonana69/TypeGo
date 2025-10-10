@@ -5,7 +5,7 @@ import time, json
 from typego.llm_wrapper import LLMWrapper
 from typego.skill_item import SkillRegistry
 from typego.robot_wrapper import RobotWrapper
-from typego.yolo_client import ObservationEncoder
+from typego.robot_observation import ObservationEncoder
 from typego.utils import print_t
 
 # ------------------------------

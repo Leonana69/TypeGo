@@ -1,19 +1,13 @@
-import time, os, math
 from typing import Optional
-from dataclasses import dataclass
-import numpy as np
-from openai import OpenAI
-import threading, requests
 from overrides import overrides
 from PIL import Image
-import cv2
-import json
-import queue
-from enum import Enum
 from scipy.spatial.transform import Rotation as R
 from functools import wraps
-
-DEBUG_MODE = False
+import time, os, math
+import numpy as np
+import threading, requests
+import cv2
+import queue
 
 import rclpy
 from rclpy.node import Node
@@ -32,10 +26,12 @@ from typego.robot_wrapper import RobotWrapper, robot_skill
 from typego.robot_observation import RobotPosture, RobotObservation
 from typego.robot_info import RobotInfo
 from typego.yolo_client import YoloClient
-from typego.utils import print_t, ImageRecover, _clamp
+from typego.utils import print_t, ImageRecover
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
 from typego.skill_item import SubSystem
+
+DEBUG_MODE = False
 
 GO2_CAM_K = np.array([[818.18507419, 0.0, 637.94628188],
                       [0.0, 815.32431463, 338.3480119],
@@ -367,7 +363,7 @@ def go2action(feature_str = None):
         features = []
         
         @wraps(func)
-        def wrapper(self: "Go2Wrapper", *args, **kwargs):
+        def wrapper(self: "Go2", *args, **kwargs):
             print_t(f">>> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
@@ -393,7 +389,7 @@ def go2action(feature_str = None):
         features = [f.strip() for f in feature_str.split(",")] if feature_str else []
         
         @wraps(func)
-        def wrapper(self: "Go2Wrapper", *args, **kwargs):
+        def wrapper(self: "Go2", *args, **kwargs):
             print_t(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
             if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
@@ -412,7 +408,7 @@ def go2action(feature_str = None):
     
     return decorator
 
-class Go2Wrapper(RobotWrapper):
+class Go2(RobotWrapper):
     def __init__(self, robot_info: RobotInfo):
         self.init_ros_node()
         super().__init__(robot_info, Go2Observation(robot_info=robot_info, node=self.node))
