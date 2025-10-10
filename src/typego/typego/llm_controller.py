@@ -27,7 +27,7 @@ class LLMController():
         self.s2d_event = threading.Event()
 
         if robot_info.robot_type == "virtual":
-            from typego.typego.virtual_robot import VirtualRobot
+            from typego.virtual_robot import VirtualRobot
             self.robot = VirtualRobot(robot_info)
         if robot_info.robot_type == "go2":
             from typego.go2_wrapper import Go2

@@ -57,9 +57,6 @@ docker_build:
 	@echo -n "=>"
 	@make docker_start
 
-run_slam:
-	ros2 launch typego slam_sync.launch.py rviz:=true
-
 save_map:
 	@echo "=> Saving map..."
 	@{ \

@@ -479,6 +479,10 @@ class Go2(RobotWrapper):
         self.spin_thread.start()
         self.command_thread.start()
         print_t("[Go2] Robot is ready.")
+
+        time.sleep(2.0)
+        self.walk_rotate(30, 0.15)
+
         return True
 
     @overrides
