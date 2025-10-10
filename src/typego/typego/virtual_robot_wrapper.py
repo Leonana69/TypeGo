@@ -4,10 +4,10 @@ from PIL import Image
 from overrides import overrides
 import json
 
-from typego.robot_wrapper import RobotWrapper, RobotObservation, robot_skill
+from typego.robot_wrapper import RobotWrapper, robot_skill
 from typego.yolo_client import YoloClient
 from typego.robot_info import RobotInfo
-from typego.robot_wrapper import RobotPosture
+from typego.robot_observation import RobotPosture, RobotObservation
 from typego.method import make_find_object_method
 from typego.skill_item import SubSystem
 from typego.utils import print_t

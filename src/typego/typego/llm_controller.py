@@ -8,7 +8,7 @@ import random
 
 from typego.llm_wrapper import ModelType
 from typego.yolo_client import YoloClient
-from typego.robot_wrapper import RobotPosture
+from typego.robot_observation import RobotPosture
 from typego.plan_generator import PlanGenerator
 from typego.utils import print_t
 from typego.robot_info import RobotInfo

@@ -36,6 +36,8 @@ def input_t(literal: str) -> str:
     # Use built-in print to display the timestamp followed by the message
     return input(f"[{current_time}] {literal}")
 
+def _clamp(v, lo, hi): return max(lo, min(hi, v))
+
 # def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
 #     """
 #     Convert quaternion (qx, qy, qz, qw) to roll, pitch, and yaw (RPY) angles in radians.

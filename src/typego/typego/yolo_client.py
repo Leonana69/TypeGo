@@ -15,7 +15,6 @@ from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
 
 EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
-# EDGE_SERVICE_IP = "localhost"
 EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
 
 FONT = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)

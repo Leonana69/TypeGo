@@ -1,5 +1,6 @@
 import time, os, math
 from typing import Optional
+from dataclasses import dataclass
 import numpy as np
 from openai import OpenAI
 import threading, requests
@@ -27,10 +28,11 @@ from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from typego.robot_wrapper import RobotWrapper, RobotObservation, RobotPosture, robot_skill
+from typego.robot_wrapper import RobotWrapper, robot_skill
+from typego.robot_observation import RobotPosture, RobotObservation
 from typego.robot_info import RobotInfo
 from typego.yolo_client import YoloClient
-from typego.utils import print_t, ImageRecover
+from typego.utils import print_t, ImageRecover, _clamp
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
 from typego.skill_item import SubSystem
@@ -97,6 +99,7 @@ class Go2Observation(RobotObservation):
             10
         )
 
+        # Subscribe to /waypoints
         node.create_subscription(
             WayPointArray,
             '/waypoints',
@@ -305,7 +308,7 @@ class Go2Observation(RobotObservation):
                     "y": self.position[1],
                     "yaw": self.orientation[2]
                 },
-                "posture": self.posture.name.lower(),
+                "posture": self.posture
             },
             "perception": self.yolo_client.latest_result[1] if self.yolo_client.latest_result else [],
             "nav": {
@@ -319,12 +322,8 @@ class Go2Action:
         self.actions = actions  # List of tuples (function, duration)
         
     def run(self, stop_event: threading.Event, finish_callback: callable = None):
-        # threading.Thread(target=self.execute, args=(finish_callback,)).start()
-        self.execute(stop_event, finish_callback)
-
-    def execute(self, stop_event: threading.Event, finish_callback: callable = None):
         """
-        Execute actions at 100Hz, and check for stop events frequently.
+        Execute a series of actions with specified durations.
         """
         for action, duration in self.actions:
             if stop_event.is_set():
@@ -341,12 +340,6 @@ class Go2Action:
                 time.sleep(0.01)
         if finish_callback:
             finish_callback()
-        
-class Go2StateEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, RobotPosture):
-            return obj.value
-        return super().default(obj)
 
 def go2action(feature_str = None):
     """
@@ -934,7 +927,7 @@ class Go2Wrapper(RobotWrapper):
 
     def _goto(self, x: float, y: float, timeout_sec: float,
           pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        print(f"-> Go to ({x}, {y})")
+        # print(f"-> Go to ({x}, {y})")
         self.navigate_client.wait_for_server()
 
         def send_goal():
@@ -1024,3 +1017,65 @@ class Go2Wrapper(RobotWrapper):
                 break
 
         return result_status["status"]
+
+    def walk_rotate(self, deg: float, forward_speed: float,
+                    pause_event: threading.Event, 
+                    stop_event: threading.Event) -> bool:
+        """
+        Walks forward slightly while rotating by the specified angle (in degrees).
+        Produces a more natural, dog-like turning movement.
+        """
+        print_t(f"-> Walk-Rotate by {deg} degrees")
+        initial_yaw = self.observation.orientation[2]
+        delta_rad = math.radians(deg)
+
+        accumulated_angle = 0.0
+        previous_yaw = initial_yaw
+        direction = 1 if deg > 0 else -1
+
+        while True:
+            if stop_event.is_set():
+                print_t("-> walk_rotate stopped by stop_event")
+                return False
+
+            if pause_event and pause_event.is_set():
+                time.sleep(0.1)
+                continue
+
+            cycle_start = time.time()
+            current_yaw = self.observation.orientation[2]
+            yaw_diff = current_yaw - previous_yaw
+
+            # Normalize yaw difference to [-pi, pi]
+            if yaw_diff > math.pi:
+                yaw_diff -= 2 * math.pi
+            elif yaw_diff < -math.pi:
+                yaw_diff += 2 * math.pi
+
+            accumulated_angle += yaw_diff
+            previous_yaw = current_yaw
+            remaining_angle = delta_rad - accumulated_angle
+
+            if abs(remaining_angle) < 0.02 or delta_rad * remaining_angle < 0:
+                break
+
+            # PID yaw control
+            vyaw = self.pid_yaw.update(remaining_angle)
+
+            # Gradually slow down near the target
+            slowdown_factor = max(0.2, min(1.0, abs(remaining_angle) / 0.5))
+            vx = forward_speed * slowdown_factor
+            vyaw = vyaw * slowdown_factor
+
+            # Forward motion while turning
+            self._go2_command("nav", 
+                            vx=round(vx, 3) * direction, 
+                            vy=0.0, 
+                            vyaw=round(float(vyaw), 3))
+            
+            time.sleep(max(0, 0.1 - (time.time() - cycle_start)))
+
+        # Stop smoothly
+        self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
+        time.sleep(0.3)
+        return True
