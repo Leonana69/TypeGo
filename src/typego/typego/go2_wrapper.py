@@ -480,10 +480,6 @@ class Go2(RobotWrapper):
         self.spin_thread.start()
         self.command_thread.start()
         print_t("[Go2] Robot is ready.")
-
-        time.sleep(1.0)
-        self.registry.execute("search('sports ball')")
-
         return True
 
     @overrides
@@ -606,13 +602,17 @@ class Go2(RobotWrapper):
 
     @robot_skill("stand_up", description="Make the robot stand up.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
-    def stand_up(self):
-        self._go2_command("stand_up")
+    def stand_up(self) -> bool:
+        if self.observation.posture == RobotPosture.LYING:
+            self._go2_command("stand_up")
+        return True
 
     @robot_skill("sit_down", description="Make the robot sit down.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
-    def sit_down(self):
-        self._go2_command("stand_down")
+    def sit_down(self) -> bool:
+        if self.observation.posture != RobotPosture.LYING:
+            self._go2_command("sit_down")
+        return True
 
     @robot_skill("orienting", description="Orient the robot's head to an object.", subsystem=SubSystem.MOVEMENT)
     @go2action
@@ -786,7 +786,7 @@ class Go2(RobotWrapper):
 
             time.sleep(max(0, 0.1 - (time.time() - cycle_start_time)))
         self._go2_command("nav", vx=0.0, vy=0.0, vyaw=0.0)
-        time.sleep(0.3)
+        # time.sleep(0.3)
         return True
     
     @robot_skill("nav", description="Continous movement and rotation with speed. Max speed +-1m/s, max turning +-0.5 rad/s. Positive value to move forward and clockwise/turn left.")
@@ -818,9 +818,7 @@ class Go2(RobotWrapper):
         start_time = time.time()
         while not stop_event.is_set():
             if pause_event.is_set():
-                print_t("[Go2] Follow paused...")
                 pause_event.wait()
-                print_t("[Go2] Follow resumed...")
 
             if time.time() - start_time > 60.0:
                 return False
@@ -836,8 +834,8 @@ class Go2(RobotWrapper):
                     
                 if info.depth > 1.5:
                     vx = min(1.0, info.depth / 3.0)
-                elif info.depth < 0.8:
-                    vx = -0.5
+                elif info.depth < 0.4:
+                    vx = -0.3
                 else:
                     vx = 0.0
 

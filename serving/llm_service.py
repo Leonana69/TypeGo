@@ -17,6 +17,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
 
 def load_model():
     path = 'meta-llama/Llama-3.2-1B-Instruct'
+    ### For local model, use the following path, replace the commit hash with the one you have.
+    # path = os.path.expanduser(
+    #     "~/.cache/huggingface/hub/models--meta-llama--Llama-3.2-3B-Instruct/snapshots/0cb88a4f764b7a12671c53f0838cd831a0843b95"
+    # )
     model = AutoModelForCausalLM.from_pretrained(
         path,
         torch_dtype=torch.bfloat16).to(DEVICE)
@@ -36,7 +40,7 @@ class LLMService(hyrch_serving_pb2_grpc.LLMServiceServicer):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
         with torch.no_grad():
             _ = self.model.generate(**inputs, max_new_tokens=1)
-    
+
     def Detect(self, request, context) -> hyrch_serving_pb2.DetectResponse:
         # print(f"Received Detect request from {context.peer()} on port {self.port}")
         info = json.loads(request.json_data)

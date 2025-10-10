@@ -20,7 +20,7 @@ take_picture() → take photo
 log(message: str) → log a message
 
 # OUTPUT FORMAT
-skill_name(arg1, arg2)
+skill_name(arg1, ...)
 - Strings in double quotes.
 - Use integers for ids; floats for distances; degrees as floats or ints.
 - Output MUST be a single line with only the function call.
@@ -61,10 +61,7 @@ I) Search:
 - If an object name is in OBSERVATION Perception list, use its "name" string exactly.
 - If not present, still use the user's noun as the object string.
 
-# SAFETY CLIPS
-- Degrees ∈ [5,180]; Distances ∈ [0.1,2.0]; Round to one decimal if needed.
-
-# FEW-SHOT (concise)
+# REFERENCED EXAMPLES
 {example_plans}
 
 # CURRENT CONTEXT

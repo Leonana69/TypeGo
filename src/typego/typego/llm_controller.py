@@ -64,7 +64,7 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        # self.s0_loop_thread.start()
+        self.s0_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
