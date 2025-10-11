@@ -1,8 +1,29 @@
-import datetime, cv2
+import datetime, cv2, os
 import numpy as np
 from numpy import ndarray
 from typing import Optional
 import logging
+
+from ament_index_python.packages import get_package_share_directory
+CURRENT_PROJ_DIR = get_package_share_directory('typego')
+
+def read_file(filename, subdir="resource") -> str:
+    try:
+        # handle empty or None subdir cleanly
+        if subdir:
+            subdir_clean = subdir.strip()
+        else:
+            subdir_clean = ""
+        if subdir_clean:
+            filepath = os.path.join(CURRENT_PROJ_DIR, subdir_clean, filename)
+        else:
+            filepath = os.path.join(CURRENT_PROJ_DIR, filename)
+
+        with open(filepath, "r", encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Warning: File {filename} not found")
+        return ""
 
 logging.basicConfig(
     filename='typego.log',

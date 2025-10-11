@@ -8,11 +8,11 @@ from typego.skill_item import SkillRegistry, SubSystem
 import typego.frontend_message as frontend_message
 from typego.robot_observation import RobotObservation
 
-# =========================
-# Decorator to tag skills
-# =========================
 def robot_skill(name: str, description: str = "",
                 subsystem: SubSystem = SubSystem.DEFAULT):
+    """
+    Decorator to register a robot skill.
+    """
     def deco(fn):
         sig = inspect.signature(fn)
         params = {
@@ -32,6 +32,10 @@ def robot_skill(name: str, description: str = "",
     return deco
 
 class RobotWrapper(ABC):
+    """
+    Base class for robot wrappers.
+    This class provides a common interface for different robot implementations.
+    It manages robot information, observation, and skill registry."""
     def __init__(self, robot_info: RobotInfo, obs: RobotObservation):
         self.robot_info = robot_info
         self.obs = obs
@@ -86,7 +90,7 @@ class RobotWrapper(ABC):
 
     def start(self):
         if self.running:
-            raise RuntimeError("Robot is already running")
+            return
         self.running = True
         self.obs.start()
         self._start()
@@ -98,47 +102,39 @@ class RobotWrapper(ABC):
         self._stop()
         self.obs.stop()
 
+    # ---- Abstract methods to be implemented specifically for each robot ----
     @abstractmethod
     def _start(self) -> bool:
-        """
-        Start the robot.
-        """
+        """Called once when starting the robot."""
         ...
 
     @abstractmethod
     def _stop(self):
-        """
-        Stop the robot.
-        """
+        """Called once when stopping the robot."""
         ...
 
     @abstractmethod
     def _pause_action(self):
-        """
-        Pause the robot's current action.
-        """
+        """Call once when pausing the robot's current action."""
         ...
 
     @abstractmethod
     def _resume_action(self):
-        """
-        Resume the robot's current action.
-        """
+        """Call once when resuming the robot's current action."""
         ...
 
     @abstractmethod
     def _stop_action(self):
-        """
-        Stop the robot's current action.
-        """
+        """Call once when stopping the robot's current action."""
         ...
 
+    # ---- Commons skills ----
     @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)
     def take_picture(self, task_id: int) -> bool:
         frontend_message.publish(self.obs.image, task_id)
         return True
 
-    @robot_skill("log", description="Log a message", subsystem=SubSystem.DEFAULT)
+    @robot_skill("log", description="Show user a message", subsystem=SubSystem.DEFAULT)
     def log(self, message: str, task_id: int) -> bool:
         frontend_message.publish(message, task_id)
         return True

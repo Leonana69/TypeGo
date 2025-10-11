@@ -16,6 +16,9 @@ from typego_interface.msg import WayPointArray, WayPoint
 from typego.yolo_client import ObjectInfo
 
 class RobotPosture(str, Enum):
+    """
+    Robot posture states.
+    """
     UNINIT = 'uninit'
     STANDING = 'standing'
     LYING = 'lying'
@@ -51,6 +54,10 @@ class ObservationEncoder(JSONEncoder):
     }
 )
 class RobotObservation(ABC):
+    """
+    Base class for robot observations.
+    Subclasses should implement the abstract methods to provide specific functionalities.
+    """
     # Declare private fields once; the decorator discovers these automatically
     _image: Optional[Image.Image]
     _depth: Optional[ndarray[np.float32]]
@@ -87,9 +94,7 @@ class RobotObservation(ABC):
         self._queue_size = max(1, queue_size)
         self._copy_on_enqueue = copy_on_enqueue
 
-    # -------------------------
-    # Lifecycle
-    # -------------------------
+    # ---- Lifecycle ----
     def start(self):
         if self.running:
             raise RuntimeError("Observation is already running")
@@ -127,6 +132,9 @@ class RobotObservation(ABC):
             self._loop = None
 
     async def _main(self):
+        """
+        Main async task: producer + N consumers.
+        """
         # Single-producer (periodic) + N consumers (bounded concurrency)
         queue: asyncio.Queue[Image.Image] = asyncio.Queue(maxsize=self._queue_size)
 
@@ -147,6 +155,9 @@ class RobotObservation(ABC):
         await asyncio.gather(*consumers, return_exceptions=True)
 
     async def _producer(self, queue: "asyncio.Queue[Image.Image]"):
+        """
+        Periodic producer: capture image and enqueue.
+        """
         interval = self.interval
         while not self._stop_evt.is_set():
             t0 = time.perf_counter()
@@ -172,6 +183,9 @@ class RobotObservation(ABC):
             await asyncio.sleep(interval - dt if dt < interval else 0.0)
 
     async def _consumer(self, queue: "asyncio.Queue[Image.Image]"):
+        """
+        Consumer: fetch image from queue and process it.
+        """
         while True:
             img = await queue.get()
             try:
@@ -179,9 +193,7 @@ class RobotObservation(ABC):
             finally:
                 queue.task_done()
 
-    # -------------------------
-    # Hooks for subclasses
-    # -------------------------
+    # ---- Abstract methods ----
     @abstractmethod
     def _start(self):
         """Called once when starting observation."""
@@ -203,10 +215,11 @@ class RobotObservation(ABC):
     
     @abstractmethod
     def obs(self) -> dict:
+        """Return the full observation as a dictionary."""
         ...
 
     def obs_str(self) -> str:
-        """Return the observation as a JSON string."""
+        """Return the full observation as a JSON string."""
         return ObservationEncoder().encode(self.obs())
 
     def blocked(self) -> bool:
@@ -235,6 +248,9 @@ class RobotObservation(ABC):
 
 @dataclass(slots=True)
 class SLAMMap:
+    """
+    SLAM map representation and utilities.
+    """
     # Core map
     map_data: Optional[ndarray[np.int16]] = None
     width: int = 0
@@ -263,7 +279,7 @@ class SLAMMap:
     _base_bgr: Optional[ndarray[np.uint8]] = None   # cached colorized occupancy
     _last_prune_ts: float = 0.0
 
-    # ------------- Update methods -------------
+    # ---- Update methods ----
     def update_map(
         self,
         map_data: ndarray[np.int16],
@@ -311,7 +327,7 @@ class SLAMMap:
                     self.trajectory.popleft()
                 self._last_prune_ts = now
 
-    # ------------- Queries -------------
+    # ---- Queries ----
     def get_waypoint(self, id: int) -> Optional["WayPoint"]:
         with self._lock:
             if self.waypoints is None or not self._wp_index_by_id:
@@ -346,7 +362,7 @@ class SLAMMap:
         with self._lock:
             return self.map_data is None or self.map_data.size == 0
 
-    # ------------- Visualization -------------
+    # ---- Visualization -----
     def get_map(
         self,
         *,
@@ -387,7 +403,7 @@ class SLAMMap:
                 base = cv2.resize(base, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
             return base
 
-    # ------------- Helpers -------------
+    # ---- Helpers -----
     def world_to_pixel(self, x: float, y: float) -> tuple[int, int]:
         """World meters → image pixel (OpenCV coords; origin at top-left)."""
         u = int((x - self.origin[0]) * self.inv_resolution)

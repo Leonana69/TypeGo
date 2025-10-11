@@ -8,16 +8,13 @@ import asyncio, aiohttp, threading
 import numpy as np
 from typing import Any, Optional
 
-from typego.utils import print_t
+from typego.utils import print_t, CURRENT_PROJ_DIR
 from typego.robot_info import RobotInfo
-
-from ament_index_python.packages import get_package_share_directory
-CURRENT_DIR = get_package_share_directory('typego')
 
 EDGE_SERVICE_IP = os.environ.get("EDGE_SERVICE_IP", "localhost")
 EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
 
-FONT = ImageFont.truetype(os.path.join(CURRENT_DIR, "resource/Roboto-Medium.ttf"), size=36)
+FONT = ImageFont.truetype(os.path.join(CURRENT_PROJ_DIR, "resource/Roboto-Medium.ttf"), size=36)
 
 class ObjectInfo:
     def __init__(self, name: str, center_x, center_y, width, height, depth: Optional[float] = None):
@@ -28,7 +25,7 @@ class ObjectInfo:
         self.h: float = float(height)
         self.depth: Optional[float] = float(depth) if depth is not None else None
 
-    # -------- JSON support --------
+    # ---- JSON support ----
     def to_dict(self) -> dict[str, Any]:
         """Return JSON-serializable dict."""
         base_info = {
@@ -39,11 +36,7 @@ class ObjectInfo:
             base_info["dist"] = round(self.depth, 2)
         return base_info
 
-    def to_json(self) -> str:
-        """Return JSON string."""
-        return json.dumps(self.to_dict())
-
-    # -------- Python builtins --------
+    # ---- Python builtins ----
     def __repr__(self) -> str:
         return f"ObjectInfo({self.to_dict()})"
 

@@ -1,24 +1,11 @@
-import os, json
 from typing import Optional
 
 from typego.llm_wrapper import LLMWrapper, ModelType
-from typego.utils import print_t
+from typego.utils import print_t, read_file
 from typego.robot_wrapper import RobotWrapper
 from typego.s2 import S2DPlan
 
-from ament_index_python.packages import get_package_share_directory
-CURRENT_DIR = get_package_share_directory('typego')
-
 CHAT_LOG_DIR = "/home/guojun/Documents/Go2-Livox-ROS2/src/typego/resource/"
-
-def read_file(filename):
-    try:
-        filepath = os.path.join(CURRENT_DIR, "resource", filename)
-        with open(filepath, "r", encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"Warning: File {filename} not found")
-        return ""
 
 class PlanGenerator():
     def __init__(self, robot: RobotWrapper):

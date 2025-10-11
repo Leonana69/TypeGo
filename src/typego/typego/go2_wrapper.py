@@ -338,6 +338,9 @@ class Go2Action:
         if finish_callback:
             finish_callback()
 
+# ============================
+# Decorator to tag go2 actions
+# ============================
 def go2action(feature_str = None):
     """
     Decorator to mark a function as an action that can be executed.

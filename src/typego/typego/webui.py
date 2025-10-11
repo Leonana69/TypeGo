@@ -1,21 +1,17 @@
 import io, time, json, os
 from flask import Flask, Response, render_template, request, jsonify
-from threading import Thread
 
 from typego.robot_info import RobotInfo
-from typego.utils import print_t
+from typego.utils import print_t, CURRENT_PROJ_DIR
 from typego.llm_controller import LLMController
 from typego.frontend_message import try_get
-
-from ament_index_python.packages import get_package_share_directory
-CURRENT_DIR = get_package_share_directory('typego')
 
 class TypeGo:
     def __init__(self, robot_info: RobotInfo):
         self.llm_controller = LLMController(robot_info)
         self.running = True
         self.app = Flask(__name__, 
-                        template_folder=os.path.join(CURRENT_DIR, 'resource'))
+                        template_folder=os.path.join(CURRENT_PROJ_DIR, 'resource'))
         
         print_t("template_folder:", self.app.template_folder)
         self.setup_routes()
@@ -126,7 +122,7 @@ class TypeGo:
         self.llm_controller.stop_controller()
 
 def main():
-    with open(os.path.join(CURRENT_DIR, 'config/robot_info.json'), 'r') as f:
+    with open(os.path.join(CURRENT_PROJ_DIR, 'config/robot_info.json'), 'r') as f:
         typego = TypeGo(RobotInfo.from_dict(json.load(f)))
         typego.run()
 
