@@ -1,16 +1,13 @@
 from abc import ABC
 import re, time
 from enum import Enum, auto
-from typing import Any, Optional, TypeAlias
+from typing import Any, Optional
 import threading
 import contextvars
 import uuid
 import itertools
 
 from typego.utils import log_error, print_t
-
-SKILL_ARG_TYPE: TypeAlias = int | float | str
-SKILL_RET_TYPE: TypeAlias = Optional[int | float | bool | str]
 
 # ----------------------------
 # Robot Subsystems
@@ -126,23 +123,24 @@ class SkillRegistry:
             ok = False
             for ss in targets:
                 exe = self._active.get(ss)
-                if exe:
-                    fn = self._funcs.get(exe.name)
-                    if getattr(fn, "__accepts_pause__", False):
-                        exe.control.pause_event.set()
-                        print(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
+                if not exe:
+                    continue
+                fn = self._funcs.get(exe.name)
+                if getattr(fn, "__accepts_pause__", False):
+                    exe.control.pause_event.set()
+                    print(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
 
-                        # mark subsystem free
-                        self._paused[ss] = exe
-                        self._active[ss] = None
-                        self._running[ss] = None
+                    # mark subsystem free
+                    self._paused[ss] = exe
+                    self._active[ss] = None
+                    self._running[ss] = None
 
-                        # free semaphore so new skill can acquire
-                        self._locks[ss].release()
-                    else:
-                        exe.control.stop_event.set()
-                        print(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
-                    ok = True
+                    # free semaphore so new skill can acquire
+                    self._locks[ss].release()
+                else:
+                    exe.control.stop_event.set()
+                    print(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
+                ok = True
             return ok
 
     def resume(self, subsystem: Optional[SubSystem] = None) -> bool:
@@ -151,16 +149,17 @@ class SkillRegistry:
             ok = False
             for ss in targets:
                 exe = self._paused.get(ss)
-                if exe:
-                    exe.control.pause_event.clear()
-                    self._active[ss] = exe
-                    self._running[ss] = exe.name
-                    self._paused[ss] = None
+                if not exe:
+                    continue
+                exe.control.pause_event.clear()
+                self._active[ss] = exe
+                self._running[ss] = exe.name
+                self._paused[ss] = None
 
-                    # re-acquire semaphore for resumed skill
-                    self._locks[ss].acquire()
-                    print(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
-                    ok = True
+                # re-acquire semaphore for resumed skill
+                self._locks[ss].acquire()
+                print(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
+                ok = True
             return ok
 
     def stop(self, subsystem: Optional[SubSystem] = None, timeout: float | None = None) -> bool:
@@ -170,16 +169,14 @@ class SkillRegistry:
             # get exe without holding the guard while joining
             with self._active_guard:
                 exe = self._active.get(ss)
-            if exe:
-                print(f"[SkillRegistry] Stopping subsystem {ss.name}")
-                exe.control.stop_event.set()
-                exe.thread.join(timeout=timeout)  # no guard held here
-                ok = True
+            if not exe:
+                continue
+            print(f"[SkillRegistry] Stopping subsystem {ss.name}")
+            exe.control.stop_event.set()
+            exe.thread.join(timeout=timeout)  # no guard held here
+            ok = True
         return ok
 
-    # -------------------------
-    # Execute with BUSY + control
-    # -------------------------
     def execute(
         self,
         func_call: str,
@@ -190,8 +187,9 @@ class SkillRegistry:
         """Execute a registered skill asynchronously in a background thread.
         - Ensures exclusive subsystem execution (non-blocking BUSY).
         - Provides stop/pause control via threading.Event.
-        - Allows nested same-thread calls (RLock).
-        - If task_id matches an existing execution, stops it before starting new one."""
+        - Allows nested same-thread calls.
+        - Overrides any existing execution with the same task_id.
+        """
 
         # ---- Parse call ----
         if not args:
@@ -332,9 +330,6 @@ class SkillItem(ABC):
                 f"args: {[arg for arg in self._args]}, "
                 f"desc: {self._description}")
 
-    # def register_args(self, params: dict):
-    #     for k, v in params.items():
-    #         self._args.append(SkillArg(k, v))
     def register_args(self, params: dict | None):
         """Register argument definitions, skipping internal control args."""
         self._args.clear()
@@ -344,7 +339,7 @@ class SkillItem(ABC):
             if n not in self._INTERNAL_ARGS:
                 self._args.append(SkillArg(n, t))
 
-    def parse_args(self, args_str_list: list[SKILL_ARG_TYPE], allow_positional_args: bool = False) -> list[SKILL_ARG_TYPE]:
+    def parse_args(self, args_str_list: list[str]) -> list[Optional[int | float | bool | str]]:
         """Parses the string of arguments and converts them to the expected types."""
         # Check the number of arguments
         if len(args_str_list) != len(self.args):
@@ -356,10 +351,7 @@ class SkillItem(ABC):
             if not isinstance(arg, str):
                 parsed_args.append(arg)
                 continue
-            # Allow positional arguments
-            if arg.startswith('$') and allow_positional_args:
-                parsed_args.append(arg)
-                continue
+            
             try:
                 if self.args[i].arg_type == bool:
                     parsed_args.append(arg.strip().lower() == 'true')
@@ -368,39 +360,3 @@ class SkillItem(ABC):
             except ValueError as e:
                 log_error(f"Error parsing argument {i + 1}. Expected type {self._args[i].arg_type.__name__}, but got value '{arg.strip()}'. Original error: {e}", raise_error=True)
         return parsed_args
-    
-
-def evaluate_value(s: str) -> SKILL_RET_TYPE:
-    if not s:  # Empty string or None
-        return None
-    
-    # Strip whitespace once at the beginning
-    s_clean = s.strip()
-    
-    # Check for None
-    if s_clean == 'None':
-        return None
-    
-    # Check for boolean values
-    if s_clean == 'True':
-        return True
-    if s_clean == 'False':
-        return False
-    
-    # Check for numeric values
-    if s_clean.startswith(('-', '+')):
-        num_str = s_clean[1:]
-        sign = -1 if s_clean[0] == '-' else 1
-    else:
-        num_str = s_clean
-        sign = 1
-    
-    # Check if it's a valid number
-    if num_str.replace('.', '', 1).isdigit():
-        if '.' in num_str:
-            return sign * float(num_str)
-        else:
-            return sign * int(num_str)
-    
-    # Return original string if no conversion applies
-    return s

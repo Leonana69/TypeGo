@@ -38,6 +38,41 @@ def input_t(literal: str) -> str:
 
 def _clamp(v, lo, hi): return max(lo, min(hi, v))
 
+def evaluate_value(s: str) -> Optional[int | float | bool | str]:
+    if not s:  # Empty string or None
+        return None
+    
+    # Strip whitespace once at the beginning
+    s_clean = s.strip()
+    
+    # Check for None
+    if s_clean == 'None':
+        return None
+    
+    # Check for boolean values
+    if s_clean == 'True':
+        return True
+    if s_clean == 'False':
+        return False
+    
+    # Check for numeric values
+    if s_clean.startswith(('-', '+')):
+        num_str = s_clean[1:]
+        sign = -1 if s_clean[0] == '-' else 1
+    else:
+        num_str = s_clean
+        sign = 1
+    
+    # Check if it's a valid number
+    if num_str.replace('.', '', 1).isdigit():
+        if '.' in num_str:
+            return sign * float(num_str)
+        else:
+            return sign * int(num_str)
+    
+    # Return original string if no conversion applies
+    return s
+
 # def quaternion_to_rpy(qx, qy, qz, qw) -> ndarray:
 #     """
 #     Convert quaternion (qx, qy, qz, qw) to roll, pitch, and yaw (RPY) angles in radians.
