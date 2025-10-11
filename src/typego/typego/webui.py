@@ -49,7 +49,7 @@ class TypeGo:
             "Go to the chair without book.",
         ]
         with self.ui:
-            gr.HTML("""<h1>🪽 TypeGo: Power the Robot Dog with Large Language Model</h1>""")
+            gr.HTML("""<h1>🐕 TypeGo: Power the Robot Dog with Large Language Model</h1>""")
             gr.HTML(generate_povs())
             self.chat_interface = gr.ChatInterface(
                 fn=self.ui_process_message,

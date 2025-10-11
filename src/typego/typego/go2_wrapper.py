@@ -366,17 +366,17 @@ def go2action(feature_str = None):
         @wraps(func)
         def wrapper(self: "Go2", *args, **kwargs):
             print_t(f">>> [Go2] Action: {func.__name__}, args: {args}, kwargs: {kwargs}")
-            if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
+            if "sit_stand" not in features and self.obs.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
 
-            self.observation.posture = RobotPosture.MOVING
+            self.obs.posture = RobotPosture.MOVING
             try:
                 print_t(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 result = func(self, *args, **kwargs)
             finally:
                 print_t(f">>> [Go2] Action {func.__name__} completed")
 
-            self.observation.posture = RobotPosture.STANDING
+            self.obs.posture = RobotPosture.STANDING
             return result
         
         return wrapper
@@ -392,17 +392,17 @@ def go2action(feature_str = None):
         @wraps(func)
         def wrapper(self: "Go2", *args, **kwargs):
             print_t(f">>> [Go2] Executing action: {func.__name__}, features: {features}")
-            if "sit_stand" not in features and self.observation.posture == RobotPosture.LYING:
+            if "sit_stand" not in features and self.obs.posture == RobotPosture.LYING:
                 self._go2_command("stand_up")
 
-            self.observation.posture = RobotPosture.MOVING
+            self.obs.posture = RobotPosture.MOVING
             try:
                 print_t(f">>> [Go2] Action {func.__name__} started, executing with args: {args}, kwargs: {kwargs}")
                 result = func(self, *args, **kwargs)
             finally:
                 print_t(f">>> [Go2] Action {func.__name__} completed, releasing lock.")
 
-            self.observation.posture = RobotPosture.STANDING
+            self.obs.posture = RobotPosture.STANDING
             return result
         
         return wrapper
@@ -514,9 +514,9 @@ class Go2(RobotWrapper):
 
         match command:
             case "stand_up":
-                self.observation.posture = RobotPosture.STANDING
+                self.obs.posture = RobotPosture.STANDING
             case "stand_down":
-                self.observation.posture = RobotPosture.LYING
+                self.obs.posture = RobotPosture.LYING
             case _:
                 pass
 
@@ -603,14 +603,14 @@ class Go2(RobotWrapper):
     @robot_skill("stand_up", description="Make the robot stand up.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
     def stand_up(self) -> bool:
-        if self.observation.posture == RobotPosture.LYING:
+        if self.obs.posture == RobotPosture.LYING:
             self._go2_command("stand_up")
         return True
 
     @robot_skill("sit_down", description="Make the robot sit down.", subsystem=SubSystem.MOVEMENT)
     @go2action("sit_stand")
     def sit_down(self) -> bool:
-        if self.observation.posture != RobotPosture.LYING:
+        if self.obs.posture != RobotPosture.LYING:
             self._go2_command("sit_down")
         return True
 
@@ -618,7 +618,7 @@ class Go2(RobotWrapper):
     @go2action
     def orienting(self, object: str, stop_event: threading.Event) -> bool:
         for _ in range(1):
-            info = self.get_obj_info(object, True)
+            info = self.obs.get_obj_info(object, True)
             if info is None:
                 return False
             if (info.x - 0.5) < 0.1:
@@ -629,7 +629,7 @@ class Go2(RobotWrapper):
     @robot_skill("look_object", description="Look at a specific object", subsystem=SubSystem.MOVEMENT)
     @go2action
     def look_object(self, object: str, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        body_pitch = self.observation.orientation[1]
+        body_pitch = self.obs.orientation[1]
         body_yaw = 0.0
 
         begin = time.time()
@@ -643,7 +643,7 @@ class Go2(RobotWrapper):
                 break
 
             start_time = time.time()
-            info = self.get_obj_info(object, True)
+            info = self.obs.get_obj_info(object, True)
 
             if info is None:
                 return False
@@ -676,18 +676,18 @@ class Go2(RobotWrapper):
         """
         Moves the robot by the specified distance in the x (forward/backward) and y (left/right) directions.
         """
-        initial_x = self.observation.position[0]
-        initial_y = self.observation.position[1]
-        initial_yaw = self.observation.orientation[2]
+        initial_x = self.obs.position[0]
+        initial_y = self.obs.position[1]
+        initial_yaw = self.obs.orientation[2]
 
         target_x = initial_x + dx * math.cos(initial_yaw) - dy * math.sin(initial_yaw)
         target_y = initial_y + dx * math.sin(initial_yaw) + dy * math.cos(initial_yaw)
 
         while not stop_event.is_set():
             start_time = time.time()
-            current_x = self.observation.position[0]
-            current_y = self.observation.position[1]
-            current_yaw = self.observation.orientation[2]
+            current_x = self.obs.position[0]
+            current_y = self.obs.position[1]
+            current_yaw = self.obs.orientation[2]
 
             # Compute error in world frame
             error_world_x = target_x - current_x
@@ -745,7 +745,7 @@ class Go2(RobotWrapper):
         Rotates the robot by the specified angle in degrees.
         """
         print_t(f"-> Rotate by {deg} degrees")
-        initial_yaw = self.observation.orientation[2]
+        initial_yaw = self.obs.orientation[2]
         delta_rad = math.radians(deg)
 
         accumulated_angle = 0.0
@@ -761,7 +761,7 @@ class Go2(RobotWrapper):
                 continue
 
             cycle_start_time = time.time()
-            current_yaw = self.observation.orientation[2]
+            current_yaw = self.obs.orientation[2]
             yaw_diff = current_yaw - previous_yaw
 
             # Normalize yaw difference to the range [-pi, pi]
@@ -804,7 +804,7 @@ class Go2(RobotWrapper):
             if pause_event.is_set():
                 time.sleep(0.1)
                 continue
-            if self.get_obj_info(object) is not None:
+            if self.obs.get_obj_info(object) is not None:
                 return True
             rand_turn(45, pause_event, stop_event)
         return False
@@ -824,7 +824,7 @@ class Go2(RobotWrapper):
                 return False
             
             cycle_start_time = time.time()
-            info = self.get_obj_info(object, True)
+            info = self.obs.get_obj_info(object, True)
             if info is not None:
                 last_seen_cx = info.cx
                 if abs(last_seen_cx - 0.5) < 0.1:
@@ -917,7 +917,7 @@ class Go2(RobotWrapper):
     @robot_skill("goto_waypoint", description="Go to a specific waypoint", subsystem=SubSystem.MOVEMENT)
     @go2action
     def goto_waypoint(self, id: int, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        wp = self.observation.slam_map.get_waypoint(id)
+        wp = self.obs.slam_map.get_waypoint(id)
         if wp is None:
             print_t(f"Waypoint {id} not found")
             return False
@@ -1029,7 +1029,7 @@ class Go2(RobotWrapper):
         Produces a more natural, dog-like turning movement.
         """
         print_t(f"-> Walk-Rotate by {deg} degrees")
-        initial_yaw = self.observation.orientation[2]
+        initial_yaw = self.obs.orientation[2]
         delta_rad = math.radians(deg)
 
         accumulated_angle = 0.0
@@ -1046,7 +1046,7 @@ class Go2(RobotWrapper):
                 continue
 
             cycle_start = time.time()
-            current_yaw = self.observation.orientation[2]
+            current_yaw = self.obs.orientation[2]
             yaw_diff = current_yaw - previous_yaw
 
             # Normalize yaw difference to [-pi, pi]

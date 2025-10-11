@@ -74,7 +74,7 @@ class VirtualRobot(RobotWrapper):
 
     @overrides
     def _start(self) -> bool:
-        self.observation.posture = RobotPosture.STANDING
+        self.obs.posture = RobotPosture.STANDING
         return True
 
     @overrides

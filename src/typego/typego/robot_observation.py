@@ -184,18 +184,21 @@ class RobotObservation(ABC):
     # -------------------------
     @abstractmethod
     def _start(self):
+        """Called once when starting observation."""
         ...
 
     @abstractmethod
     def _stop(self):
+        """Called once when stopping observation."""
         ...
 
     @abstractmethod
     async def process_image(self, image: Image.Image):
+        """Process a new image get from the robot capture."""
         ...
     
     @abstractmethod
-    def fetch_processed_result(self) -> tuple[Image.Image, list] | None:
+    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
         ...
     
     @abstractmethod
@@ -207,6 +210,23 @@ class RobotObservation(ABC):
     
     def fetch_command(self) -> str | None:
         """Fetch the command from other sources."""
+        return None
+    
+    def get_obj_info(self, object_name: str, reliable=False) -> ObjectInfo | None:
+        object_name = object_name.strip('\'').strip('"').lower()
+
+        for _ in range(3):
+            rslt = self.fetch_processed_result()
+            object_list = []
+            if rslt:
+                object_list = rslt[1]
+
+            for obj in object_list:
+                if obj.name.startswith(object_name):
+                    return obj
+            if not reliable:
+                break
+            time.sleep(0.2)
         return None
 
 @dataclass(slots=True)

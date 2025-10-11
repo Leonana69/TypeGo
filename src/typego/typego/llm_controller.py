@@ -54,7 +54,7 @@ class LLMController():
             time.sleep(0.1)
         time.sleep(1.0)
         while self.running:
-            command = self.robot.observation.fetch_command()  # Non-blocking fetch
+            command = self.robot.obs.fetch_command()  # Non-blocking fetch
             if command:
                 print_t(f"[C] Received voice command: {command}")
                 self.put_instruction(command)
@@ -79,7 +79,7 @@ class LLMController():
         self.robot.stop()
 
     def fetch_robot_pov(self) -> Optional[Image.Image]:
-        obs = self.robot.observation
+        obs = self.robot.obs
         if not obs:
             print_t(f"[C] No observation available")
             return None
@@ -94,7 +94,7 @@ class LLMController():
         return image
     
     def fetch_robot_map(self) -> Optional[Image.Image]:
-        obs = self.robot.observation
+        obs = self.robot.obs
         if not obs or obs.slam_map.is_empty():
             return None
 

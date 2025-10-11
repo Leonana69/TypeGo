@@ -31,9 +31,9 @@ def robot_skill(name: str, description: str = "",
     return deco
 
 class RobotWrapper(ABC):
-    def __init__(self, robot_info: RobotInfo, observation: RobotObservation):
+    def __init__(self, robot_info: RobotInfo, obs: RobotObservation):
         self.robot_info = robot_info
-        self.observation = observation
+        self.obs = obs
 
         self.registry = SkillRegistry()
         self._auto_register_skills()
@@ -87,7 +87,7 @@ class RobotWrapper(ABC):
         if self.running:
             raise RuntimeError("Robot is already running")
         self.running = True
-        self.observation.start()
+        self.obs.start()
         self._start()
 
     def stop(self):
@@ -95,7 +95,7 @@ class RobotWrapper(ABC):
             return
         self.running = False
         self._stop()
-        self.observation.stop()
+        self.obs.stop()
 
     @abstractmethod
     def _start(self) -> bool:
@@ -134,65 +134,10 @@ class RobotWrapper(ABC):
 
     @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)
     def take_picture(self) -> bool:
-        publish(self.observation.image)
+        publish(self.obs.image)
         return True
 
     @robot_skill("log", description="Log a message", subsystem=SubSystem.DEFAULT)
     def log(self, message: str) -> bool:
         publish(message)
         return True
-
-    # vision skills
-    def get_obj_list(self) -> list[ObjectInfo]:
-        """Returns a formatted string of detected objects."""
-        process_result = self.observation.fetch_processed_result()
-        return process_result[1] if process_result else []
-
-    def get_obj_list_str(self) -> str:
-        """Returns a formatted string of detected objects."""
-        object_list = self.get_obj_list()
-        return f"[{', '.join(str(obj) for obj in object_list)}]"
-
-    def get_obj_info(self, object_name: str, reliable=False) -> ObjectInfo | None:
-        object_name = object_name.strip('\'').strip('"').lower()
-
-        for _ in range(3):
-            object_list = self.get_obj_list()
-            for obj in object_list:
-                if obj.name.startswith(object_name):
-                    return obj
-            if not reliable:
-                break
-            time.sleep(0.2)
-        return None
-
-    def is_visible(self, object_name: str, reliable=False) -> bool:
-        return self.get_obj_info(object_name, reliable) is not None
-
-    def _get_object_attribute(self, object_name: str, attr: str) -> float | str:
-        """Helper function to retrieve an object's attribute."""
-        info = self.get_obj_info(object_name)
-        if info is None:
-            return f'{attr}: {object_name} is not in sight'
-        return getattr(info, attr)
-    
-    def object_x(self, object_name: str) -> float | str:
-        # if `[float]` is in the object_name, use it
-        match = re.search(r'\[(-?\d+(\.\d+)?)\]', object_name)
-        if match:
-            # Extract the number and return it as a float
-            extracted_number = float(match.group(1))
-            return extracted_number
-        return self._get_object_attribute(object_name, 'x')
-    
-    def object_y(self, object_name: str) -> float | str:
-        return self._get_object_attribute(object_name, 'y')
-    
-    def object_width(self, object_name: str) -> float | str:
-        return self._get_object_attribute(object_name, 'w')
-    
-    def object_height(self, object_name: str) -> float | str:
-        return self._get_object_attribute(object_name, 'h')
-    
-    def object_distance(self, object_name: str) -> float | str:
-        return self._get_object_attribute(object_name, 'depth')

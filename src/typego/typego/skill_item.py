@@ -307,7 +307,7 @@ class SkillArg:
     def __repr__(self) -> str:
         return f"{self.arg_name}: {self.arg_type.__name__}"
 
-class SkillItem(ABC):
+class SkillItem:
     _INTERNAL_ARGS = {"stop_event", "pause_event"}  # filtered out
     def __init__(self, name: str, description: str):
         self._name: str = name

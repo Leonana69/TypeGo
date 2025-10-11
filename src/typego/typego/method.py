@@ -126,7 +126,7 @@ class MethodEngine:
                     return {"status": "max_secs", "trace": trace, "state": state}
 
             # Observe for current frame
-            full_obs = self.robot.observation.obs()  # your observer should honor requested keys
+            full_obs = self.robot.obs.obs()  # your observer should honor requested keys
             print(full_obs)
             obs = {k: full_obs.get(k) for k in fr.spec.obs_keys}
             obs["t"] = int(time.time() - start_time)  # add elapsed time

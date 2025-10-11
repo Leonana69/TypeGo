@@ -42,7 +42,7 @@ class PlanGenerator():
     def s1_plan(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
         prompt = self.s1_base_prompt.format(example_plans=self.s1_examples,
                                         user_instruction=inst,
-                                        observation=json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2))
+                                        observation=json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2))
 
         try:
             # TODO: move newline removal to serving side
@@ -59,7 +59,7 @@ class PlanGenerator():
 
     def s2s_plan(self, inst: str, s2d_plan: S2DPlan, model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
-        observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
+        observation = json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2)
 
         prompt = self.s2s_base_prompt.format(
             robot_skills=robot_skills,
@@ -84,7 +84,7 @@ class PlanGenerator():
 
     def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
         robot_skills = "\n".join(self.robot.registry.get_skill_list())
-        observation = json.dumps(self.robot.observation.obs(), cls=ObservationEncoder, indent=2)
+        observation = json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2)
 
         prompt = self.s2d_base_prompt.format(
             robot_skills=robot_skills,
