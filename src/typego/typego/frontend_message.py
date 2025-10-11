@@ -1,4 +1,3 @@
-# message_bus.py
 import queue, io, base64
 from typing import Any, Optional
 from PIL import Image

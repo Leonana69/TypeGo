@@ -26,7 +26,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from typego.robot_wrapper import RobotWrapper, robot_skill
 from typego.robot_observation import RobotPosture, RobotObservation
 from typego.robot_info import RobotInfo
-from typego.yolo_client import YoloClient
+from typego.yolo_client import ObjectInfo, YoloClient
 from typego.utils import print_t, ImageRecover
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
@@ -292,7 +292,7 @@ class Go2Observation(RobotObservation):
         await self.yolo_client.detect(image, self._depth)
     
     @overrides
-    def fetch_processed_result(self) -> tuple[Image.Image, list] | None:
+    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
         return self.yolo_client.latest_result
 
     @overrides

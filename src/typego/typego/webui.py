@@ -1,9 +1,4 @@
-import rclpy
-from rclpy.node import Node
-from ament_index_python.packages import get_package_share_directory
-
-import socket, os
-import io, time, json
+import io, time, json, os
 import gradio as gr
 from flask import Flask, Response
 from threading import Thread
@@ -13,6 +8,7 @@ from typego.utils import print_t
 from typego.llm_controller import LLMController
 from typego.frontend_message import try_get
 
+from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
 
 def generate_povs():
@@ -75,12 +71,12 @@ class TypeGo:
 
             # Now stream messages from the queue as they arrive
             while True:
-                msg = try_get(timeout=1.0)
+                msg = try_get(timeout=3.0)
                 if msg == None:
                     break
 
                 # Yield new assistant messages one by one
-                print_t(f"[UI] New message: {msg}")
+                # print_t(f"[UI] New message: {msg}")
                 yield gr.ChatMessage(role="assistant", content=str(msg))
 
     def generate_mjpeg_stream(self, source: str):

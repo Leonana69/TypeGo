@@ -5,7 +5,7 @@ from overrides import overrides
 import json
 
 from typego.robot_wrapper import RobotWrapper, robot_skill
-from typego.yolo_client import YoloClient
+from typego.yolo_client import ObjectInfo, YoloClient
 from typego.robot_info import RobotInfo
 from typego.robot_observation import RobotPosture, RobotObservation
 from typego.method import make_find_object_method
@@ -54,7 +54,7 @@ class VirtualObservation(RobotObservation):
         await self.yolo_client.detect(image)
     
     @overrides
-    def fetch_processed_result(self) -> tuple[Image.Image, list]:
+    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
         return self.yolo_client.latest_result
     
     @overrides
@@ -95,25 +95,26 @@ class VirtualRobot(RobotWrapper):
 
     @robot_skill("move_forward", description="Move forward by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_forward(self, distance: float) -> bool:
-        print(f"-> Move forward by {distance} cm")
+        print(f"-> Move forward by {distance} m")
+        self.log(f"Moving forward by {distance} m")
         time.sleep(SKILL_EXECUTION_TIME)
         return True
 
     @robot_skill("move_back", description="Move back by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_back(self, distance: float) -> bool:
-        print(f"-> Move back by {distance} cm")
+        print(f"-> Move back by {distance} m")
         time.sleep(SKILL_EXECUTION_TIME)
         return True
 
     @robot_skill("move_left", description="Move left by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_left(self, distance: float) -> bool:
-        print(f"-> Move left by {distance} cm")
+        print(f"-> Move left by {distance} m")
         time.sleep(SKILL_EXECUTION_TIME)
         return True
 
     @robot_skill("move_right", description="Move right by a certain distance (m)", subsystem=SubSystem.MOVEMENT)
     def move_right(self, distance: float) -> bool:
-        print(f"-> Move right by {distance} cm")
+        print(f"-> Move right by {distance} m")
         time.sleep(SKILL_EXECUTION_TIME)
         return True
 
