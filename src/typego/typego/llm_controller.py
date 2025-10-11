@@ -16,13 +16,11 @@ from typego.s2 import S2DPlan
 from typego.s1 import S1
 from typego.s0 import S0Event, S0
 from typego.method import MethodEngine, make_find_object_method, make_follow_object_method
+import typego.frontend_message as frontend_message
 
 class LLMController():
     def __init__(self, robot_info: RobotInfo):
         self.running = False
-
-        self.latest_inst = None
-        self.latest_inst_lock = threading.Lock()
 
         self.s2d_event = threading.Event()
 
@@ -41,13 +39,13 @@ class LLMController():
         self.s0_loop_thread = threading.Thread(target=self.s0.loop)
         self.s2d_loop_thread = threading.Thread(target=self.s2d_loop)
 
-    def put_instruction(self, inst: str):
-        with self.latest_inst_lock:
-            print_t(f"[C] Received instruction: {inst}")
-            self.latest_inst = inst
+    def put_instruction(self, inst: str) -> int:
+        print_t(f"[C] Received instruction: {inst}")
         
         # spawn a new thread to handle the instruction
-        threading.Thread(target=self.on_new_task, args=(inst,), daemon=True).start()
+        s2d_plan = S2DPlan(inst)
+        threading.Thread(target=self.on_new_task, args=(s2d_plan,), daemon=True).start()
+        return s2d_plan.id
 
     def check_voice_command_thread(self):
         while not self.running:
@@ -104,9 +102,9 @@ class LLMController():
     """
     S1: Fast thinking, react to new observations, adjust short-term plans
     """
-    def on_new_task(self, inst: str):
-        s2d_plan = S2DPlan(inst)
-
+    def on_new_task(self, s2d_plan: S2DPlan):
+        frontend_message.publish(f"Received new task: {s2d_plan.content}", task_id=s2d_plan.id)
+        inst = s2d_plan.content
         # S1 plan starts
         s1_plan = S1(self.planner).plan(inst)
         print_t(f"[S1] Plan: {s1_plan}")
@@ -133,6 +131,7 @@ class LLMController():
             time.sleep(sleep_time)
 
         print_t(f"[C] Task {inst} ({s2d_plan.id}) completed or stopped.")
+        frontend_message.end_queue(s2d_plan.id)
 
     def s2d_loop(self, rate: float = 0.2):
         delay = 1 / rate

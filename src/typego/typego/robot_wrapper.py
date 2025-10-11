@@ -5,7 +5,7 @@ import inspect
 from typego.robot_info import RobotInfo
 from typego.yolo_client import ObjectInfo
 from typego.skill_item import SkillRegistry, SubSystem
-from typego.frontend_message import publish
+import typego.frontend_message as frontend_message
 from typego.robot_observation import RobotObservation
 
 # =========================
@@ -27,6 +27,7 @@ def robot_skill(name: str, description: str = "",
         # Record whether skill accepts control events explicitly
         fn.__accepts_stop__  = "stop_event"  in sig.parameters
         fn.__accepts_pause__ = "pause_event" in sig.parameters
+        fn.__accepts_task_id__ = "task_id" in sig.parameters
         return fn
     return deco
 
@@ -133,11 +134,11 @@ class RobotWrapper(ABC):
         ...
 
     @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)
-    def take_picture(self) -> bool:
-        publish(self.obs.image)
+    def take_picture(self, task_id: int) -> bool:
+        frontend_message.publish(self.obs.image, task_id)
         return True
 
     @robot_skill("log", description="Log a message", subsystem=SubSystem.DEFAULT)
-    def log(self, message: str) -> bool:
-        publish(message)
+    def log(self, message: str, task_id: int) -> bool:
+        frontend_message.publish(message, task_id)
         return True

@@ -41,7 +41,7 @@ class TypeGo:
                 return jsonify({'type': 'text', 'content': 'Shutting down...'})
             
             # Send instruction to LLM
-            self.llm_controller.put_instruction(user_message)
+            task_id = self.llm_controller.put_instruction(user_message)
             
             def generate():
                 # Send initial acknowledgment
@@ -49,9 +49,11 @@ class TypeGo:
                 
                 # Stream messages from the queue as they arrive
                 while True:
-                    msg = try_get(timeout=3.0)
+                    msg = try_get(timeout=3.0, task_id=task_id)
                     if msg is None:
                         break
+                    elif msg == "":
+                        continue
                     
                     # print_t(f"[UI] New message: {msg}")
                     msg_str = str(msg)

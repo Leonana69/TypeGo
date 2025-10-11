@@ -254,6 +254,8 @@ class SkillRegistry:
                     kwargs["stop_event"] = control.stop_event
                 if getattr(fn, "__accepts_pause__", False):
                     kwargs["pause_event"] = control.pause_event
+                if getattr(fn, "__accepts_task_id__", False):
+                    kwargs["task_id"] = task_id
 
                 parsed = item.parse_args(arg_list) if arg_list else []
                 print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] for task_id={task_id} in subsystem {subsystem.name}")
@@ -308,7 +310,7 @@ class SkillArg:
         return f"{self.arg_name}: {self.arg_type.__name__}"
 
 class SkillItem:
-    _INTERNAL_ARGS = {"stop_event", "pause_event"}  # filtered out
+    _INTERNAL_ARGS = {"stop_event", "pause_event", "task_id"}  # filtered out
     def __init__(self, name: str, description: str):
         self._name: str = name
         self._description: str = description
