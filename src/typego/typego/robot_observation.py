@@ -205,6 +205,10 @@ class RobotObservation(ABC):
     def obs(self) -> dict:
         ...
 
+    def obs_str(self) -> str:
+        """Return the observation as a JSON string."""
+        return ObservationEncoder().encode(self.obs())
+
     def blocked(self) -> bool:
         return False
     

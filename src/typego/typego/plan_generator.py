@@ -5,7 +5,6 @@ from typego.llm_wrapper import LLMWrapper, ModelType
 from typego.utils import print_t
 from typego.robot_wrapper import RobotWrapper
 from typego.s2 import S2DPlan
-from typego.robot_observation import ObservationEncoder
 
 from ament_index_python.packages import get_package_share_directory
 CURRENT_DIR = get_package_share_directory('typego')
@@ -42,7 +41,7 @@ class PlanGenerator():
     def s1_plan(self, inst, model_type: ModelType = ModelType.LOCAL_1B) -> str:
         prompt = self.s1_base_prompt.format(example_plans=self.s1_examples,
                                         user_instruction=inst,
-                                        observation=json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2))
+                                        observation=self.robot.obs.obs_str())
 
         try:
             # TODO: move newline removal to serving side
@@ -58,16 +57,13 @@ class PlanGenerator():
         return ret
 
     def s2s_plan(self, inst: str, s2d_plan: S2DPlan, model_type: ModelType = ModelType.GPT4O) -> str:
-        robot_skills = "\n".join(self.robot.registry.get_skill_list())
-        observation = json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2)
-
         prompt = self.s2s_base_prompt.format(
-            robot_skills=robot_skills,
+            robot_skills="\n".join(self.robot.registry.get_skill_list()),
             example_plans=self.s2s_examples,
             instruction=inst,
             user_guidelines=self.s2s_user_guidelines,
             current_plan=s2d_plan.get_s2s_input(),
-            observation=observation
+            observation=self.robot.obs.obs_str()
         )
 
         try:
@@ -83,16 +79,13 @@ class PlanGenerator():
         return ret
 
     def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
-        robot_skills = "\n".join(self.robot.registry.get_skill_list())
-        observation = json.dumps(self.robot.obs.obs(), cls=ObservationEncoder, indent=2)
-
         prompt = self.s2d_base_prompt.format(
-            robot_skills=robot_skills,
+            robot_skills="\n".join(self.robot.registry.get_skill_list()),
             example_plans=self.s2d_examples,
             task_history=S2DPlan.get_s2d_input(),
             user_instruction=inst,
             user_guidelines=self.s2d_user_guidelines,
-            observation=observation
+            observation=self.robot.obs.obs_str()
         )
 
         try:
