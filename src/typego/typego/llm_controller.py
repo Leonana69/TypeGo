@@ -62,7 +62,7 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        self.s0_loop_thread.start()
+        # self.s0_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
@@ -84,7 +84,7 @@ class LLMController():
 
         process_result = obs.fetch_processed_result()
         if not process_result:
-            print_t(f"[C] No processed result available")
+            # print_t(f"[C] No processed result available")
             return None
 
         image, yolo_results = process_result

@@ -128,7 +128,7 @@ class SkillRegistry:
                 fn = self._funcs.get(exe.name)
                 if getattr(fn, "__accepts_pause__", False):
                     exe.control.pause_event.set()
-                    print(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
+                    print_t(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
 
                     # mark subsystem free
                     self._paused[ss] = exe
@@ -139,7 +139,7 @@ class SkillRegistry:
                     self._locks[ss].release()
                 else:
                     exe.control.stop_event.set()
-                    print(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
+                    print_t(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
                 ok = True
             return ok
 
@@ -158,7 +158,7 @@ class SkillRegistry:
 
                 # re-acquire semaphore for resumed skill
                 self._locks[ss].acquire()
-                print(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
+                print_t(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
                 ok = True
             return ok
 
@@ -171,7 +171,7 @@ class SkillRegistry:
                 exe = self._active.get(ss)
             if not exe:
                 continue
-            print(f"[SkillRegistry] Stopping subsystem {ss.name}")
+            print_t(f"[SkillRegistry] Stopping subsystem {ss.name}")
             exe.control.stop_event.set()
             exe.thread.join(timeout=timeout)  # no guard held here
             ok = True
@@ -204,7 +204,7 @@ class SkillRegistry:
             arg_list = list(args.values())
             kwargs = dict(args)
 
-        print(f"[SkillRegistry] Executing skill '{name}' with args {arg_list or kwargs} for task_id={task_id}")
+        print_t(f"[SkillRegistry] Executing skill '{name}' with args {arg_list or kwargs} for task_id={task_id}")
 
         if name == "continue":
             return {"ok": True, "id": "continue"}
@@ -222,14 +222,14 @@ class SkillRegistry:
                 old_exec_id = self._task_to_exec[task_id]
                 old_exe = self._executions.get(old_exec_id)
                 if old_exe and old_exe.is_alive():
-                    print(f"[SkillRegistry] Task {task_id} already running as '{old_exe.name}' [{old_exec_id}], stopping it")
+                    print_t(f"[SkillRegistry] Task {task_id} already running as '{old_exe.name}' [{old_exec_id}], stopping it")
                     old_exe.control.stop_event.set()
         
         # Wait for old task outside the lock to avoid deadlock
         if old_exe and old_exe.is_alive():
             old_exe.thread.join(timeout=2.0)
             if old_exe.is_alive():
-                print(f"[SkillRegistry] Warning: Old task {task_id} did not stop in time")
+                print_t(f"[SkillRegistry] Warning: Old task {task_id} did not stop in time")
 
         # ---- Check if subsystem is available ----
         lock = self._locks[subsystem]
@@ -237,7 +237,7 @@ class SkillRegistry:
             with self._active_guard:
                 current_exe = self._active.get(subsystem)
                 current_task = current_exe.task_id if current_exe else None
-            print(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY (task_id={current_task})")
+            print_t(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY (task_id={current_task})")
             return {"ok": False, "error": f"subsystem {subsystem.name} is busy", "busy": True, "current_task_id": current_task}
 
         control = SkillControl()
@@ -258,12 +258,12 @@ class SkillRegistry:
                     kwargs["task_id"] = task_id
 
                 parsed = item.parse_args(arg_list) if arg_list else []
-                print(f"[SkillRegistry] Started skill '{name}' [{exec_id}] for task_id={task_id} in subsystem {subsystem.name}")
+                print_t(f"[SkillRegistry] Started skill '{name}' [{exec_id}] for task_id={task_id} in subsystem {subsystem.name}")
                 ret = fn(*parsed, **kwargs) if kwargs else fn(*parsed)
                 if callback:
                     callback(ret)
             except Exception as e:
-                print(f"[SkillRegistry] ERROR in skill '{name}': {e}")
+                print_t(f"[SkillRegistry] ERROR in skill '{name}': {e}")
             finally:
                 with self._active_guard:
                     self._active[subsystem] = None
@@ -273,7 +273,7 @@ class SkillRegistry:
                 self._running[subsystem] = None
                 lock.release()
                 _current_control.reset(token)
-                print(f"[SkillRegistry] Skill '{name}' [{exec_id}] for task_id={task_id} finished, subsystem {subsystem.name} released")
+                print_t(f"[SkillRegistry] Skill '{name}' [{exec_id}] for task_id={task_id} finished, subsystem {subsystem.name} released")
 
         t = threading.Thread(target=runner, daemon=True, args=(callback,))
         exe = SkillExecution(exec_id, name, subsystem, t, control, task_id)

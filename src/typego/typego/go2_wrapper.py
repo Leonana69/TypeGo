@@ -476,6 +476,7 @@ class Go2(RobotWrapper):
             'vyaw': msg.angular.z
         }
 
+        # print_t(f"[Go2] Received /cmd_vel: vx={control['vx']:.2f}, vy={control['vy']:.2f}, vyaw={control['vyaw']:.2f}")
         self._go2_command("nav", **control)
 
     @overrides
