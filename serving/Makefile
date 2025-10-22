@@ -3,7 +3,7 @@
 # Set JETSON=1 to build/run the Jetson Dockerfile variant
 JETSON ?= 0
 
-GPU_DEVICES=0
+GPU_DEVICES=4,5
 GPU_OPTIONS=$(shell if [ -f /proc/driver/nvidia/version ]; then echo "--gpus all -e CUDA_VISIBLE_DEVICES=$(GPU_DEVICES)"; else echo ""; fi)
 
 DOCKERFILE = ./docker/Dockerfile
