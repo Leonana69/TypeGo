@@ -26,19 +26,28 @@ def start_worker_service(stop_event):
         # Lazy import — each process loads CUDA context independently
         if name == "yolo":
             from yolo_service import serve as serve_fn
+            use_daemon = True  # Regular services can be daemon
         elif name == "clip":
             from clip_service import serve as serve_fn
+            use_daemon = True
         elif name == "vlm":
             from vlm_service import serve as serve_fn
+            use_daemon = True
         elif name == "llm":
             from llm_service import serve as serve_fn
+            use_daemon = False  # LLM with vLLM CANNOT be daemon (needs to spawn children)
         else:
             continue
 
         for port in ports:
-            p = multiprocessing.Process(target=serve_fn, args=(port, stop_event), daemon=True)
+            p = multiprocessing.Process(
+                target=serve_fn, 
+                args=(port, stop_event), 
+                daemon=use_daemon
+            )
             p.start()
             processes.append(p)
+            print(f"✓ Started {name} service on port {port} (daemon={use_daemon})")
 
     return processes
 
