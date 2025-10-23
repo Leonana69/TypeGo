@@ -2,6 +2,7 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "tf2_ros/transform_broadcaster.h"
+#include "tf2_ros/static_transform_broadcaster.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -50,9 +51,26 @@ public:
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(5),
             std::bind(&Go2TFService::poll_socket, this));
+
+        init_static_tf();
     }
 
 private:
+    void init_static_tf() {
+        static_tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
+
+        geometry_msgs::msg::TransformStamped t;
+        t.header.stamp = now();
+        t.header.frame_id = "base_link";
+        t.child_frame_id = "imu_link";
+        t.transform.translation.x = 0.0;
+        t.transform.translation.y = 0.0;
+        t.transform.translation.z = 0.0;
+        t.transform.rotation.w = 1.0;
+
+        static_tf_broadcaster_->sendTransform(t);
+    }
+
     void poll_socket() {
         std::vector<uint8_t> buffer(2048);
         ssize_t rlen = recvfrom(socket_, buffer.data(), buffer.size(), 0, nullptr, nullptr);
@@ -107,6 +125,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+    std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
 };
 
 int main(int argc, char** argv) {
