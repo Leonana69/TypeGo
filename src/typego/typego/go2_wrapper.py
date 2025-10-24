@@ -846,8 +846,8 @@ class Go2(RobotWrapper):
                     vyaw = 0.0
                 else:
                     vyaw = (0.5 - last_seen_cx) * 2.0
-                    
-                if info.dist > 1.5:
+
+                if info.dist > 1.0:
                     vx = min(1.0, info.dist / 3.0)
                 elif info.dist < 0.4:
                     vx = -0.3
