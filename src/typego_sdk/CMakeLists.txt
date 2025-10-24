@@ -28,7 +28,7 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
+# ----------- livox_udp_receiver_node -----------
 add_executable(livox_udp_receiver_node src/livox_udp_receiver.cpp)
 target_link_libraries(livox_udp_receiver_node PUBLIC
   ${sensor_msgs_TARGETS}
@@ -38,6 +38,7 @@ target_link_libraries(livox_udp_receiver_node PUBLIC
   tf2_ros::tf2_ros
 )
 
+# ----------- go2_tf_service_node -----------
 add_executable(go2_tf_service_node src/go2_tf_service.cpp)
 target_link_libraries(go2_tf_service_node PUBLIC
   ${sensor_msgs_TARGETS}
@@ -47,17 +48,23 @@ target_link_libraries(go2_tf_service_node PUBLIC
   tf2_ros::tf2_ros
 )
 
+# ----------- gstreamer_receiver_node -----------
 pkg_check_modules(GST REQUIRED gstreamer-1.0 gstreamer-app-1.0)
 
 add_executable(gstreamer_receiver_node src/gstreamer_receiver.cpp)
-target_include_directories(gstreamer_receiver_node PRIVATE ${GST_INCLUDE_DIRS})
+target_include_directories(gstreamer_receiver_node PRIVATE
+  ${GST_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}             # ✅ add OpenCV include path
+)
 target_link_libraries(gstreamer_receiver_node PUBLIC
   ${sensor_msgs_TARGETS}
   rclcpp::rclcpp
   sensor_msgs::sensor_msgs_library
   ${GST_LIBRARIES}
+  ${OpenCV_LIBS}                     # ✅ link OpenCV libraries
 )
 
+# ----------- waypoints_node -----------
 find_package(typego_interface REQUIRED)
 add_executable(waypoints_node src/waypoints.cpp)
 target_link_libraries(waypoints_node PUBLIC
@@ -73,6 +80,7 @@ target_link_libraries(waypoints_node PUBLIC
   ${CURL_LIBRARIES}
 )
 
+# ----------- install targets -----------
 install(TARGETS
   livox_udp_receiver_node
   gstreamer_receiver_node
@@ -80,20 +88,9 @@ install(TARGETS
   go2_tf_service_node
   DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}/
-)
-
-install(DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}/
-)
-
-install(DIRECTORY resource
-  DESTINATION share/${PROJECT_NAME}/
-)
-
-install(DIRECTORY rviz_config
-  DESTINATION share/${PROJECT_NAME}/
-)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY resource DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY rviz_config DESTINATION share/${PROJECT_NAME}/)
 
 ament_package()
