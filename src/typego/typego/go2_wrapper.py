@@ -26,7 +26,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from typego.robot_wrapper import RobotWrapper, robot_skill
 from typego.robot_observation import RobotPosture, RobotObservation
 from typego.robot_info import RobotInfo
-from typego.yolo_client import ObjectInfo, YoloClient
+from typego.yolo_client import ObjectBox, YoloClient
 from typego.utils import print_t, ImageRecover
 from typego.pid import PID
 from typego_interface.msg import WayPointArray
@@ -49,6 +49,10 @@ class Go2Observation(RobotObservation):
         self.yolo_client = YoloClient(robot_info)
         self.image_recover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.posture = RobotPosture.STANDING
+
+        self.postition = np.array([0.0, 0.0, 0.0])
+        self.orientation = np.array([0.0, 0.0, 0.0])
+
         self.init_ros_obs(node)
 
     def init_ros_obs(self, node: Node):
@@ -152,12 +156,12 @@ class Go2Observation(RobotObservation):
         # Raw image if using d435i
         frame = cv_image
         
-        self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        self.rgb_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
     def _depth_callback(self, msg: ROSImage):
         """ Convert ROS Image message to depth numpy array in mm. """
         depth_image = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width)
-        self.depth = depth_image.astype(np.float32) * 25.0 # scale back
+        self.depth_image = depth_image.astype(np.float32) * 25.0 / 1000.0 # scale back and convert to meters
 
     def _tf_callback(self, msg: TFMessage):
         def make_transform(translation, quaternion):
@@ -289,10 +293,17 @@ class Go2Observation(RobotObservation):
 
     @overrides
     async def process_image(self, image: Image.Image):
-        await self.yolo_client.detect(image, self._depth)
+        capture_info = {
+            'timestamp': time.time(),
+            'position': self.position.copy(),
+            'orientation': self.orientation.copy(),
+            'image': image.copy(),
+            'depth': self._depth_image.copy(),
+            'yolo_result': await self.yolo_client.detect(image, self._depth_image)
+        }
     
     @overrides
-    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
+    def fetch_objects(self) -> tuple[Image.Image, list[ObjectBox]] | None:
         return self.yolo_client.latest_result
 
     @overrides
@@ -817,8 +828,8 @@ class Go2(RobotWrapper):
     @go2action
     def follow(self, object: str, pause_event: threading.Event, stop_event: threading.Event) -> bool:
         last_seen_cx = 0.5
-        current_pitch = 0.2
-        self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
+        # current_pitch = 0.2
+        # self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
         start_time = time.time()
         while not stop_event.is_set():
             if pause_event.is_set():
@@ -836,21 +847,21 @@ class Go2(RobotWrapper):
                 else:
                     vyaw = (0.5 - last_seen_cx) * 2.0
                     
-                if info.depth > 1.5:
-                    vx = min(1.0, info.depth / 3.0)
-                elif info.depth < 0.4:
+                if info.dist > 1.5:
+                    vx = min(1.0, info.dist / 3.0)
+                elif info.dist < 0.4:
                     vx = -0.3
                 else:
                     vx = 0.0
 
-                if abs(info.cy - 0.5) > 0.2:
-                    current_pitch += (info.cy - 0.5) / 3.0
-                    self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
-                    time.sleep(0.2)
+                # if abs(info.cy - 0.5) > 0.2:
+                #     current_pitch += (info.cy - 0.5) / 3.0
+                #     self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
+                #     time.sleep(0.2)
                 self._go2_command("nav", vx=round(float(vx), 3), vy=0.0, vyaw=round(float(vyaw), 3))
             else:
-                current_pitch = 0.2
-                self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
+                # current_pitch = 0.2
+                # self._go2_command("euler", roll=0, pitch=round(float(current_pitch), 2), yaw=0)
                 if last_seen_cx - 0.5 < 0.0:
                     self.turn_left(30, pause_event, stop_event)
                 else:

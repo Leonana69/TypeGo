@@ -13,7 +13,7 @@ import numpy as np
 from typego.robot_info import RobotInfo
 from typego.auto_lock_properties import auto_locked_properties
 from typego_interface.msg import WayPointArray, WayPoint
-from typego.yolo_client import ObjectInfo
+from typego.yolo_client import ObjectBox
 
 class RobotPosture(str, Enum):
     """
@@ -34,9 +34,9 @@ class RobotPosture(str, Enum):
             raise ValueError(f"Unknown posture: {s}")
 
 class ObservationEncoder(JSONEncoder):
-    """Custom JSON encoder for ObjectInfo class"""
+    """Custom JSON encoder for ObjectBox class"""
     def default(self, obj):
-        if isinstance(obj, ObjectInfo):
+        if isinstance(obj, ObjectBox):
             return obj.to_dict()
         elif isinstance(obj, (np.float32, np.float64, float)):
             return round(float(obj), 2)
@@ -59,8 +59,8 @@ class RobotObservation(ABC):
     Subclasses should implement the abstract methods to provide specific functionalities.
     """
     # Declare private fields once; the decorator discovers these automatically
-    _image: Optional[Image.Image]
-    _depth: Optional[ndarray[np.float32]]
+    _rgb_image: Optional[Image.Image]
+    _depth_image: Optional[ndarray[np.float32]]
     _orientation: ndarray[np.float32]
     _position: ndarray[np.float32]
     _slam_map: "SLAMMap"
@@ -76,8 +76,8 @@ class RobotObservation(ABC):
 
         self.running = False
 
-        self._image = None
-        self._depth = None
+        self._rgb_image = None
+        self._depth_image = None
         self._orientation = np.array([0.0, 0.0, 0.0])
         self._position = np.array([0.0, 0.0, 0.0])
         self._slam_map = SLAMMap()
@@ -161,7 +161,7 @@ class RobotObservation(ABC):
         interval = self.interval
         while not self._stop_evt.is_set():
             t0 = time.perf_counter()
-            img = self.image  # property getter (thread-safe)
+            img = self.rgb_image  # property getter (thread-safe)
             if img is not None:
                 if self._copy_on_enqueue:
                     # If your camera reuses buffers, this avoids aliasing
@@ -210,7 +210,7 @@ class RobotObservation(ABC):
         ...
     
     @abstractmethod
-    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
+    def fetch_objects(self) -> tuple[Image.Image, list[ObjectBox]] | None:
         ...
     
     @abstractmethod
@@ -229,11 +229,11 @@ class RobotObservation(ABC):
         """Fetch the command from other sources."""
         return None
     
-    def get_obj_info(self, object_name: str, reliable=False) -> ObjectInfo | None:
+    def get_obj_info(self, object_name: str, reliable=False) -> ObjectBox | None:
         object_name = object_name.strip('\'').strip('"').lower()
 
         for _ in range(3):
-            rslt = self.fetch_processed_result()
+            rslt = self.fetch_objects()
             object_list = []
             if rslt:
                 object_list = rslt[1]

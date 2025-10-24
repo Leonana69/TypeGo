@@ -16,14 +16,18 @@ EDGE_SERVICE_PORT = os.environ.get("EDGE_SERVICE_PORT", "50049")
 
 FONT = ImageFont.truetype(os.path.join(CURRENT_PROJ_DIR, "resource/Roboto-Medium.ttf"), size=36)
 
-class ObjectInfo:
-    def __init__(self, name: str, center_x, center_y, width, height, depth: Optional[float] = None):
-        self.name: str = name
-        self.cx: float = float(center_x)
-        self.cy: float = float(center_y)
-        self.w: float = float(width)
-        self.h: float = float(height)
-        self.depth: Optional[float] = float(depth) if depth is not None else None
+class ObjectBox:
+    def __init__(self, name: str, x1: float, x2: float, y1: float, y2: float, dist: Optional[float] = None):
+        self.name = name
+        self.x1 = x1
+        self.x2 = x2
+        self.y1 = y1
+        self.y2 = y2
+        self.cx = (self.x1 + self.x2) / 2
+        self.cy = (self.y1 + self.y2) / 2
+        self.w = self.x2 - self.x1
+        self.h = self.y2 - self.y1
+        self.dist = dist if dist is not None else None
 
     # ---- JSON support ----
     def to_dict(self) -> dict[str, Any]:
@@ -32,17 +36,17 @@ class ObjectInfo:
             "name": self.name,
             "bbox": [round(self.cx, 2), round(self.cy, 2), round(self.w, 2), round(self.h, 2)],
         }
-        if self.depth is not None:
-            base_info["dist"] = round(self.depth, 2)
+        if self.dist is not None:
+            base_info["dist"] = round(self.dist, 2)
         return base_info
 
     # ---- Python builtins ----
     def __repr__(self) -> str:
-        return f"ObjectInfo({self.to_dict()})"
+        return f"ObjectBox({self.to_dict()})"
 
     def __getitem__(self, key: str | int):
         if isinstance(key, int):  # index-style
-            mapping = [self.name, self.cx, self.cy, self.w, self.h, self.depth]
+            mapping = [self.name, self.cx, self.cy, self.w, self.h, self.dist]
             return mapping[key]
         elif isinstance(key, str):  # dict-like
             if key == "bbox":
@@ -50,7 +54,7 @@ class ObjectInfo:
             if key == "size":
                 return [self.w, self.h]
             if key == "dist":
-                return self.depth
+                return self.dist
             if hasattr(self, key):
                 return getattr(self, key)
             raise KeyError(key)
@@ -59,7 +63,7 @@ class ObjectInfo:
 
     def __setitem__(self, key: str | int, value):
         if isinstance(key, int):
-            attrs = ["name", "cx", "cy", "w", "h", "depth"]
+            attrs = ["name", "cx", "cy", "w", "h", "dist"]
             setattr(self, attrs[key], value)
         elif isinstance(key, str):
             if key == "bbox":
@@ -89,7 +93,7 @@ class YoloClient():
     def __init__(self, robot_info: RobotInfo):
         self.robot_info = robot_info
         self.service_url = 'http://{}:{}/process'.format(EDGE_SERVICE_IP, EDGE_SERVICE_PORT)
-        self.target_image_size = (640, 360)
+        self.target_image_size = (640, 960)
         self._latest_result_lock = asyncio.Lock()
         self._latest_result = None
         self.frame_id = 0
@@ -97,7 +101,7 @@ class YoloClient():
         print_t(f"[Y] YoloClient initialized with service url: {self.service_url}")
 
     @property
-    def latest_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
+    def latest_result(self) -> tuple[Image.Image, list[ObjectBox]] | None:
         result = self._latest_result
         if result is None:
             return None
@@ -113,24 +117,25 @@ class YoloClient():
         return imgByteArr.getvalue()
 
     @staticmethod
-    def plot_results_ps(image: Image.Image, object_list: list["ObjectInfo"]) -> Image.Image:
+    def plot_results_ps(image: Image.Image, object_list: list["ObjectBox"]) -> Image.Image:
         if not object_list:
             return image
 
         # --- Scale image by 2x ---
+        scale = 2
         w, h = image.size
-        new_size = (w * 2, h * 2)
+        new_size = (w * scale, h * scale)
         image = image.resize(new_size, Image.LANCZOS)
         w, h = new_size
 
         draw = ImageDraw.Draw(image)
 
-        def scale_coord(cx, cy, bw, bh, width, height):
+        def scale_coord(x1, x2, y1, y2, width, height):
             """Convert normalized center coords to pixel box corners."""
-            x1 = int((cx - bw / 2) * width)
-            y1 = int((cy - bh / 2) * height)
-            x2 = int((cx + bw / 2) * width)
-            y2 = int((cy + bh / 2) * height)
+            x1 = int(x1 * width)
+            y1 = int(y1 * height)
+            x2 = int(x2 * width)
+            y2 = int(y2 * height)
             return x1, y1, x2, y2
 
         def get_text_size(text, font):
@@ -141,15 +146,15 @@ class YoloClient():
             return width, height
 
         for obj in object_list:
-            x1, y1, x2, y2 = scale_coord(obj.cx, obj.cy, obj.w, obj.h, w, h)
+            x1, y1, x2, y2 = scale_coord(obj.x1, obj.x2, obj.y1, obj.y2, w, h)
 
             # Draw bounding box
             draw.rectangle([x1, y1, x2, y2], outline="#00FFFF", width=6)
 
             # Prepare label text
             label = obj.name
-            if getattr(obj, "depth", None) is not None:
-                label += f" ({obj.depth:.2f}m)"
+            if getattr(obj, "dist", None) is not None:
+                label += f" ({obj.dist:.2f}m)"
 
             # Determine label position
             text_w, text_h = get_text_size(label, FONT)
@@ -176,15 +181,15 @@ class YoloClient():
         return image
 
     @staticmethod
-    def cc_to_ps(result: list) -> list[ObjectInfo]:
+    def cc_to_ps(result: list) -> list[ObjectBox]:
         return [
-            ObjectInfo(
+            ObjectBox(
                 name=obj['name'],
-                center_x=(obj['box']['x1'] + obj['box']['x2']) / 2,
-                center_y=(obj['box']['y1'] + obj['box']['y2']) / 2,
-                width=obj['box']['x2'] - obj['box']['x1'],
-                height=obj['box']['y2'] - obj['box']['y1'],
-                depth=obj['depth'] if 'depth' in obj else None
+                x1=float(obj['box']['x1']),
+                x2=float(obj['box']['x2']),
+                y1=float(obj['box']['y1']),
+                y2=float(obj['box']['y2']),
+                dist=float(obj['dist']) if 'dist' in obj else None
             )
             for obj in result
         ]
@@ -203,7 +208,7 @@ class YoloClient():
         except aiohttp.ServerTimeoutError:
             print_t(f"[Y] Timeout error when connecting to {service_url}")
 
-    async def detect(self, image: Image.Image, depth: Optional[np.ndarray] = None, conf=0.3):
+    async def detect(self, image: Image.Image, depth_map: Optional[np.ndarray] = None, conf=0.3) -> list[ObjectBox]:
         # Prepare image and config while not holding the lock
         config = {
             'robot_info': self.robot_info.robot_id,
@@ -238,8 +243,10 @@ class YoloClient():
             return
         
         results = json_results.get('result', [])
-        if depth is not None and len(depth.shape) == 2:
-            H, W = depth.shape
+
+        # TODO: move this part to scene graph module
+        if depth_map is not None and len(depth_map.shape) == 2:
+            H, W = depth_map.shape
             for obj in results:
                 box = obj['box']
                 # Convert normalized coordinates [0,1] → pixel coordinates
@@ -250,20 +257,24 @@ class YoloClient():
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(W - 1, x2), min(H - 1, y2)
 
-                roi = depth[y1:y2, x1:x2]
+                roi = depth_map[y1:y2, x1:x2]
                 if roi.size > 0:
-                    valid_depths = roi[roi > 0]  # filter invalid pixels
-                    if valid_depths.size > 0:
-                        median_depth_mm = np.median(valid_depths)
-                        obj['depth'] = float(median_depth_mm / 1000.0)
+                    valid_pixels = roi[roi > 0]  # filter invalid pixels
+                    if valid_pixels.size > 0:
+                        median_dist_mm = np.median(valid_pixels)
+                        obj['dist'] = float(median_dist_mm)
                     else:
-                        obj['depth'] = None
+                        obj['dist'] = None
                 else:
-                    obj['depth'] = None
+                    obj['dist'] = None
         else:
             for obj in results:
-                obj['depth'] = None
+                obj['dist'] = None
 
         # print_t(f"[Y] Detection results for image_id {json_results['image_id']}: {json_results.get('result', [])}")
+        
+        list_obj = YoloClient.cc_to_ps(json_results["result"])
         async with self._latest_result_lock:
-            self._latest_result = (image, self.cc_to_ps(json_results["result"]))
+            self._latest_result = (image, list_obj)
+
+        return list_obj

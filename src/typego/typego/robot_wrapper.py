@@ -3,7 +3,6 @@ import re, time
 import inspect
 
 from typego.robot_info import RobotInfo
-from typego.yolo_client import ObjectInfo
 from typego.skill_item import SkillRegistry, SubSystem
 import typego.frontend_message as frontend_message
 from typego.robot_observation import RobotObservation
@@ -131,7 +130,7 @@ class RobotWrapper(ABC):
     # ---- Commons skills ----
     @robot_skill("take_picture", description="Take a picture and save it", subsystem=SubSystem.DEFAULT)
     def take_picture(self, task_id: int) -> bool:
-        frontend_message.publish(self.obs.image, task_id)
+        frontend_message.publish(self.obs.rgb_image, task_id)
         return True
 
     @robot_skill("log", description="Show user a message", subsystem=SubSystem.DEFAULT)

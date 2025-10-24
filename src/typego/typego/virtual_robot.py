@@ -5,7 +5,7 @@ from overrides import overrides
 import json
 
 from typego.robot_wrapper import RobotWrapper, robot_skill
-from typego.yolo_client import ObjectInfo, YoloClient
+from typego.yolo_client import ObjectBox, YoloClient
 from typego.robot_info import RobotInfo
 from typego.robot_observation import RobotPosture, RobotObservation
 from typego.method import make_find_object_method
@@ -32,8 +32,8 @@ class VirtualObservation(RobotObservation):
                 ret, frame = self.cap.read()
                 if not ret:
                     continue
-                # Convert the frame to RGB and store it in self._image
-                self._image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                # Convert the frame to RGB and store it in self.rgb_image
+                self.rgb_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 cv2.waitKey(1)
             # while True:
             #     time.sleep(1)
@@ -54,7 +54,7 @@ class VirtualObservation(RobotObservation):
         await self.yolo_client.detect(image)
     
     @overrides
-    def fetch_processed_result(self) -> tuple[Image.Image, list[ObjectInfo]] | None:
+    def fetch_objects(self) -> tuple[Image.Image, list[ObjectBox]] | None:
         return self.yolo_client.latest_result
     
     @overrides

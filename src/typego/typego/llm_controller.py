@@ -62,7 +62,7 @@ class LLMController():
         self.running = True
         self.robot.start()
 
-        # self.s0_loop_thread.start()
+        self.s0_loop_thread.start()
         # self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
@@ -82,7 +82,7 @@ class LLMController():
             print_t(f"[C] No observation available")
             return None
 
-        process_result = obs.fetch_processed_result()
+        process_result = obs.fetch_objects()
         if not process_result:
             # print_t(f"[C] No processed result available")
             return None
@@ -115,7 +115,7 @@ class LLMController():
         # Enter S2S loop
         loop_freq = 0.5
         count = 0
-        while self.running and s2d_plan.is_active() and count < 5:
+        while self.running and s2d_plan.is_active() and count < 20:
             count += 1
             print_t(f"[C] S2S loop for task {inst} ({s2d_plan.id}), current state: {s2d_plan.current_state}")
             start_time = time.time()
