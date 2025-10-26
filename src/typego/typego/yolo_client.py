@@ -89,11 +89,11 @@ class ObjectBox:
 """
 Access the YOLO service through http.
 """
-class YoloClient():
+class YoloClient:
     def __init__(self, robot_info: RobotInfo):
         self.robot_info = robot_info
         self.service_url = 'http://{}:{}/process'.format(EDGE_SERVICE_IP, EDGE_SERVICE_PORT)
-        self.target_image_size = (640, 960)
+        self.target_image_width = 640
         self._latest_result_lock = asyncio.Lock()
         self._latest_result = None
         self.frame_id = 0
@@ -108,6 +108,15 @@ class YoloClient():
         image, objects = result
         # shallow copy of list to decouple from async updates
         return (image, list(objects))
+
+    @staticmethod
+    def scale_image(image: Image.Image, target_width: int) -> Image.Image:
+        w, h = image.size
+        if w <= target_width:
+            return image
+        scale = target_width / w
+        new_size = (target_width, int(h * scale))
+        return image.resize(new_size, Image.LANCZOS)
 
     @staticmethod
     def image_to_bytes(image: Image.Image) -> bytes:
@@ -189,7 +198,7 @@ class YoloClient():
                 x2=float(obj['box']['x2']),
                 y1=float(obj['box']['y1']),
                 y2=float(obj['box']['y2']),
-                dist=float(obj['dist']) if 'dist' in obj else None
+                dist=obj['dist']
             )
             for obj in result
         ]
@@ -217,7 +226,7 @@ class YoloClient():
             'image_id': 0,
             'conf': conf
         }
-        image_bytes = YoloClient.image_to_bytes(image.resize(self.target_image_size))
+        image_bytes = YoloClient.image_to_bytes(YoloClient.scale_image(image, self.target_image_width))
 
         async with self.frame_id_lock:
             self.frame_id += 1
@@ -245,31 +254,50 @@ class YoloClient():
         results = json_results.get('result', [])
 
         # TODO: move this part to scene graph module
-        if depth_map is not None and len(depth_map.shape) == 2:
-            H, W = depth_map.shape
-            for obj in results:
-                box = obj['box']
-                # Convert normalized coordinates [0,1] → pixel coordinates
-                x1, y1 = int(box['x1'] * W), int(box['y1'] * H)
-                x2, y2 = int(box['x2'] * W), int(box['y2'] * H)
+        # if depth_map is not None and len(depth_map.shape) == 2:
+        #     H, W = depth_map.shape
+        #     for obj in results:
+        #         box = obj['box']
+        #         # Convert normalized coordinates [0,1] → pixel coordinates
+        #         x1, y1 = int(box['x1'] * W), int(box['y1'] * H)
+        #         x2, y2 = int(box['x2'] * W), int(box['y2'] * H)
 
-                # Ensure bounds are valid
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(W - 1, x2), min(H - 1, y2)
+        #         # Ensure bounds are valid
+        #         x1, y1 = max(0, x1), max(0, y1)
+        #         x2, y2 = min(W - 1, x2), min(H - 1, y2)
 
-                roi = depth_map[y1:y2, x1:x2]
-                if roi.size > 0:
-                    valid_pixels = roi[roi > 0]  # filter invalid pixels
-                    if valid_pixels.size > 0:
-                        median_dist_mm = np.median(valid_pixels)
-                        obj['dist'] = float(median_dist_mm)
-                    else:
-                        obj['dist'] = None
-                else:
-                    obj['dist'] = None
-        else:
+        #         roi = depth_map[y1:y2, x1:x2]
+        #         if roi.size > 0:
+        #             valid_pixels = roi[roi > 0]  # filter invalid pixels
+        #             if valid_pixels.size > 0:
+        #                 median_dist_mm = np.median(valid_pixels)
+        #                 obj['dist'] = float(median_dist_mm)
+        #             else:
+        #                 obj['dist'] = None
+        #         else:
+        #             obj['dist'] = None
+        # else:
+        #     for obj in results:
+        #         obj['dist'] = None
+
+        if depth_map is None or depth_map.ndim != 2:
             for obj in results:
                 obj['dist'] = None
+        else:
+            H, W = depth_map.shape
+            for obj in results:
+                x1 = int(np.clip(obj['box']['x1'] * W, 0, W - 1))
+                y1 = int(np.clip(obj['box']['y1'] * H, 0, H - 1))
+                x2 = int(np.clip(obj['box']['x2'] * W, 0, W - 1))
+                y2 = int(np.clip(obj['box']['y2'] * H, 0, H - 1))
+
+                roi = depth_map[y1:y2, x1:x2]
+                if roi.size == 0:
+                    obj['dist'] = None
+                    continue
+
+                valid = roi[roi > 0]
+                obj['dist'] = float(np.median(valid)) if valid.size else None
 
         # print_t(f"[Y] Detection results for image_id {json_results['image_id']}: {json_results.get('result', [])}")
         

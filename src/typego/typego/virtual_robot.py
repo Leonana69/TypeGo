@@ -32,13 +32,12 @@ class VirtualObservation(RobotObservation):
                 ret, frame = self.cap.read()
                 if not ret:
                     continue
-                # Convert the frame to RGB and store it in self.rgb_image
-                self.rgb_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                # Convert the frame to RGB and store it in self._rgb_image
+                self._rgb_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 cv2.waitKey(1)
-            # while True:
-            #     time.sleep(1)
+            self.cap.release()
         self.capture_thread = threading.Thread(target=_capture_spin)
-    
+
     @overrides
     def _start(self):
         self.capture_thread.start()
