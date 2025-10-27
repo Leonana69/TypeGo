@@ -4,11 +4,11 @@ from openai import Stream
 from typing import Optional
 import time
 import threading
-import random
+import random, json
 
 from typego.llm_wrapper import ModelType
 from typego.yolo_client import YoloClient
-from typego.robot_observation import RobotPosture
+from typego.robot_observation import RobotPosture, ObservationEncoder
 from typego.plan_generator import PlanGenerator
 from typego.utils import print_t
 from typego.robot_info import RobotInfo
@@ -103,6 +103,9 @@ class LLMController():
     S1: Fast thinking, react to new observations, adjust short-term plans
     """
     def on_new_task(self, s2d_plan: S2DPlan):
+        print_t(json.dumps(self.robot.obs.scene_graph.all_objects(), cls=ObservationEncoder, indent=4))
+
+
         frontend_message.publish(f"Received new task: {s2d_plan.content}", task_id=s2d_plan.id)
         inst = s2d_plan.content
         # S1 plan starts

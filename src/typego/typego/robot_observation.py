@@ -14,6 +14,7 @@ from typego.robot_info import RobotInfo
 from typego.auto_lock_properties import auto_locked_properties
 from typego_interface.msg import WayPointArray, WayPoint
 from typego.yolo_client import ObjectBox
+from typego.scene_graph import SceneGraph, TrackedObject
 
 class RobotPosture(str, Enum):
     """
@@ -44,6 +45,8 @@ class ObservationEncoder(JSONEncoder):
             return int(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
+        elif isinstance(obj, TrackedObject):
+            return obj.to_dict()
         return super().default(obj)
 
 @auto_locked_properties(
@@ -62,6 +65,7 @@ class RobotObservation(ABC):
     _rgb_image: Optional[Image.Image]
     _depth_image: Optional[ndarray[np.float32]]
     _orientation: ndarray[np.float32]
+    _rotation: ndarray[np.float32]
     _position: ndarray[np.float32]
     _slam_map: "SLAMMap"
     _posture: RobotPosture
@@ -79,6 +83,7 @@ class RobotObservation(ABC):
         self._rgb_image = None
         self._depth_image = None
         self._orientation = np.array([0.0, 0.0, 0.0])
+        self._rotation = np.array([0.0, 0.0, 0.0, 1.0])
         self._position = np.array([0.0, 0.0, 0.0])
         self._slam_map = SLAMMap()
         self._posture = RobotPosture.UNINIT
@@ -93,6 +98,9 @@ class RobotObservation(ABC):
         self._consumer_concurrency = max(1, consumer_concurrency)
         self._queue_size = max(1, queue_size)
         self._copy_on_enqueue = copy_on_enqueue
+
+        # Scene graph
+        self.scene_graph = SceneGraph()
 
     # ---- Lifecycle ----
     def start(self):

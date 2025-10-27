@@ -81,12 +81,11 @@ class YoloService(hyrch_serving_pb2_grpc.YoloServiceServicer):
         info = json.loads(request.json_data)
         image = YoloService.bytes_to_image(request.image_data)
 
-        if 'tracking_mode' not in info:
-            info['tracking_mode'] = False
+        # Set defaults if missing
+        info.setdefault('tracking_mode', False)
+        info.setdefault('conf', 0.3)
 
-        if 'conf' not in info:
-            info['conf'] = 0.3
-
+        # Reload model only if tracking mode changes
         if self.tracking_mode != info['tracking_mode']:
             self.tracking_mode = info['tracking_mode']
             self.reload_model()

@@ -43,16 +43,14 @@ GO2_CAM_D = np.array([[-0.07203219],
                       [ 0.05415833],
                       [-0.02288355]], dtype=np.float32)
 
+_eye4 = np.eye(4)  # preallocate
+
 class Go2Observation(RobotObservation):
     def __init__(self, robot_info: RobotInfo, node: Node, rate: int = 10):
         super().__init__(robot_info, rate)
         self.yolo_client = YoloClient(robot_info)
         self.image_recover = ImageRecover(GO2_CAM_K, GO2_CAM_D)
         self.posture = RobotPosture.STANDING
-
-        self.postition = np.array([0.0, 0.0, 0.0])
-        self.orientation = np.array([0.0, 0.0, 0.0])
-
         self.init_ros_obs(node)
 
     def init_ros_obs(self, node: Node):
@@ -164,46 +162,41 @@ class Go2Observation(RobotObservation):
         self.depth_image = depth_image.astype(np.float32) * 25.0 / 1000.0 # scale back and convert to meters
 
     def _tf_callback(self, msg: TFMessage):
-        def make_transform(translation, quaternion):
-            T = np.eye(4)
-            T[:3, :3] = R.from_quat(quaternion).as_matrix()
-            T[:3, 3] = translation
-            return T
-
+        t1 = time.time()
         # Extract position and orientation from the TF message
-        for transform in msg.transforms:
-            if transform.child_frame_id == "base_link":
-                self.odom2robot_translation = np.array([
-                    transform.transform.translation.x,
-                    transform.transform.translation.y,
-                    transform.transform.translation.z
-                ])
-                self.odom2robot_rotation = np.array([
-                    transform.transform.rotation.x,
-                    transform.transform.rotation.y,
-                    transform.transform.rotation.z,
-                    transform.transform.rotation.w
-                ])
-            elif transform.child_frame_id == "odom":
-                self.map2odom_translation = np.array([
-                    transform.transform.translation.x,
-                    transform.transform.translation.y,
-                    transform.transform.translation.z
-                ])
-                self.map2odom_rotation = np.array([
-                    transform.transform.rotation.x,
-                    transform.transform.rotation.y,
-                    transform.transform.rotation.z,
-                    transform.transform.rotation.w
-                ])
+        for tf in msg.transforms:
+            t = tf.transform.translation
+            r = tf.transform.rotation
 
-        T_map_odom = make_transform(self.map2odom_translation, self.map2odom_rotation)
-        T_odom_robot = make_transform(self.odom2robot_translation, self.odom2robot_rotation)
+            # 🚀 Correct frame assignment
+            if tf.child_frame_id == "base_link":      # odom → robot
+                self.odom2robot_translation[:] = [t.x, t.y, 0.0]
+                self.odom2robot_rotation[:] = [r.x, r.y, r.z, r.w]
+            elif tf.child_frame_id == "odom":         # map → odom
+                self.map2odom_translation[:] = [t.x, t.y, 0.0]
+                self.map2odom_rotation[:] = [r.x, r.y, r.z, r.w]
+
+        T_map_odom = _eye4.copy()
+        T_map_odom[:3, :3] = R.from_quat(self.map2odom_rotation).as_matrix()
+        T_map_odom[:3, 3] = self.map2odom_translation
+        
+        T_odom_robot = _eye4.copy()
+        T_odom_robot[:3, :3] = R.from_quat(self.odom2robot_rotation).as_matrix()
+        T_odom_robot[:3, 3] = self.odom2robot_translation
+
         T_map_robot = T_map_odom @ T_odom_robot
-        self.position = T_map_robot[:3, 3]
-        self.orientation = R.from_matrix(T_map_robot[:3, :3]).as_euler('xyz')  # or .as_quat()
-        self.slam_map.update_robot_state((self.position[0], self.position[1]), self.orientation[2])
-        # print_t(f"[Go2] Position: {self.position}, Orientation: {self.orientation}")
+
+        self._position[:] = T_map_robot[:3, 3].copy()
+        self._position[2] = 0.4  # fix z height to 0.4m
+
+
+        RR = R.from_matrix(T_map_robot[:3, :3])
+        self._rotation[:] = RR.as_quat()
+        self._orientation[:] = RR.as_euler('xyz')
+        self.slam_map.update_robot_state(
+            (self._position[0], self._position[1]), self._orientation[2]
+        )
+        # print_t(f"[Go2] Position: {self._position}, Orientation: {self._orientation}, Time: {time.time() - t1:.4f}s")
 
     def _map_callback(self, msg: OccupancyGrid):
         width = msg.info.width
@@ -296,11 +289,13 @@ class Go2Observation(RobotObservation):
         capture_info = {
             'timestamp': time.time(),
             'position': self.position.copy(),
-            'orientation': self.orientation.copy(),
+            'rotation': self.rotation.copy(),
             'image': image.copy(),
             'depth': self._depth_image.copy(),
             'yolo_result': await self.yolo_client.detect(image, self._depth_image)
         }
+
+        self.scene_graph.update(capture_info)
     
     @overrides
     def fetch_objects(self) -> tuple[Image.Image, list[ObjectBox]] | None:
