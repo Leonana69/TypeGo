@@ -196,7 +196,7 @@ class Go2Observation(RobotObservation):
         self.slam_map.update_robot_state(
             (self._position[0], self._position[1]), self._orientation[2]
         )
-        # print_t(f"[Go2] Position: {self._position}, Orientation: {self._orientation}, Time: {time.time() - t1:.4f}s")
+        # print_t(f"[Go2] Position: {self._position}, Orientation: {self._rotation}, Time: {time.time() - t1:.4f}s")
 
     def _map_callback(self, msg: OccupancyGrid):
         width = msg.info.width

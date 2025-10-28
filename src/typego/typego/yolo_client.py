@@ -222,7 +222,7 @@ class YoloClient:
         config = {
             'robot_info': self.robot_info.robot_id,
             'service_type': 'yolo',
-            'tracking_mode': True,
+            'tracking_mode': False,
             'image_id': 0,
             'conf': conf
         }
