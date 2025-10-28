@@ -5,6 +5,5 @@ slam_toolbox:
     base_frame: base_link
     map_frame: map
     async_mode: true
-    use_imu: true
     map_update_interval: 0.5
     mode: localization

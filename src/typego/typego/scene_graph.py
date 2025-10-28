@@ -147,7 +147,7 @@ class SceneGraph:
         alpha_pos: float = 0.6,
         uncertainty_decay: float = 0.02,
         uncertainty_gain: float = 0.3,
-        stale_after_s: float = 50.0,
+        stale_after_s: float = 600.0,
         max_missed_frames: int = 10,
         dormant_timeout_s: float = 300.0,
         revisit_dist_m: float = 0.8,
@@ -192,9 +192,9 @@ class SceneGraph:
             marker.type = Marker.TEXT_VIEW_FACING
             marker.action = Marker.ADD
             # Enhanced text with ID, name, and uncertainty
-            marker.text = f"#{obj.id}: {obj.name}/{obj.position_uncertainty:.2f}m"
+            marker.text = f"#{obj.id}: {obj.name}\n±{obj.position_uncertainty:.2f}m"
             if obj.merged_count > 1:
-                marker.text += f"(x{obj.merged_count})"
+                marker.text += f" (×{obj.merged_count})"
             
             marker.pose.position.x = float(obj.position_world[0])
             marker.pose.position.y = float(obj.position_world[1])
@@ -346,7 +346,7 @@ class SceneGraph:
         self._merge_nearby_objects(ts)
 
         # Update objects that weren't seen this frame
-        self._update_missed_objects(ts, seen_this_frame)
+        self._update_missed_objects(ts, seen_this_frame, T_wc)
 
         # Prune completely stale objects
         self._prune_stale(ts)
@@ -483,21 +483,62 @@ class SceneGraph:
                     if merged_this_iteration:
                         break
 
-    def _update_missed_objects(self, now: float, seen_ids: set) -> None:
+    def _is_in_camera_view(self, obj_pos_world: np.ndarray, T_wc: np.ndarray) -> bool:
+        """
+        Check if an object position is within the current camera's field of view.
+        
+        Args:
+            obj_pos_world: Object position in world coordinates (3,)
+            T_wc: Camera pose in world (4x4 transform)
+        
+        Returns:
+            True if object is in view, False otherwise
+        """
+        # Transform object to camera frame
+        Pw = np.append(obj_pos_world, 1.0)
+        T_cw = np.linalg.inv(T_wc)
+        Pc = T_cw @ Pw
+        
+        # Check if object is in front of camera (positive Z)
+        if Pc[2] <= 0.1:  # At least 10cm in front
+            return False
+        
+        # Project to image plane
+        px = (Pc[0] / Pc[2]) * self.fx + self.cx
+        py = (Pc[1] / Pc[2]) * self.fy + self.cy
+        
+        # Check if projection is within image bounds (with small margin)
+        img_w, img_h = self.cx * 2, self.cy * 2
+        margin = 50  # pixels
+        if px < -margin or px > img_w + margin:
+            return False
+        if py < -margin or py > img_h + margin:
+            return False
+        
+        return True
+
+    def _update_missed_objects(self, now: float, seen_ids: set, T_wc: np.ndarray) -> None:
         """Update tracking state for objects not detected this frame."""
         for oid, obj in self.objects.items():
             if oid in seen_ids or obj.status == "removed":
                 continue
             
             if obj.status == "active":
+                # Check if object is in current camera view
+                in_view = self._is_in_camera_view(obj.position_world, T_wc)
+                
                 obj.missed_frames += 1
                 # Decay confidence
                 obj.confidence = max(0.1, obj.confidence - 0.05)
                 # Increase uncertainty when object is not being observed
                 obj.position_uncertainty = min(2.0, obj.position_uncertainty + 0.05)
                 
-                # Transition to dormant if missed too many frames
-                if obj.missed_frames >= self.max_missed_frames:
+                # If object is in view but not detected for multiple consecutive frames,
+                # it likely disappeared. Use a threshold to handle YOLO blinking/false negatives
+                if in_view and obj.missed_frames >= self.max_missed_frames:
+                    obj.status = "removed"
+                # Transition to dormant if missed too many frames (object out of view)
+                elif not in_view and obj.missed_frames >= self.max_missed_frames:
                     obj.status = "dormant"
                     obj.missed_frames = 0
 
