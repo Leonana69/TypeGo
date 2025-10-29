@@ -830,8 +830,8 @@ class Go2(RobotWrapper):
             if pause_event.is_set():
                 pause_event.wait()
 
-            if time.time() - start_time > 20.0:
-                return False
+            if time.time() - start_time > 10.0:
+                return True
             
             cycle_start_time = time.time()
             info = self.obs.get_obj_info(object, True)

@@ -506,7 +506,7 @@ Task list: [
 }
 
 ## OUTPUT
-There is only one in-progress task (3) and it's about wandering around in the room. The observation shows that there is a sports ball present, and according to the guidelines, the robot likes playing with the sports ball. Therefore, it would be appropriate to stop the current task and start a new task to play with the sports ball for a while. But I shouldn't play for too long and should resume the previous task after that.
+There is only one in-progress task (3) and it's about wandering around in the room. It's not an important task. The observation shows that there is a sports ball present and I like playing with the sports ball. Therefore, it would be appropriate to stop the current task and start a new task to play with the sports ball for a while since I didn't do it recently. But I shouldn't play for too long and should resume the previous task after that.
 
 ```json
 {

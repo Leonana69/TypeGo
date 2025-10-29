@@ -120,7 +120,7 @@ class LLMController():
         # Enter S2S loop
         self.s2s_loop(s2d_plan)
 
-    def s2s_loop(self, s2d_plan: S2DPlan, rate: float = 0.5):
+    def s2s_loop(self, s2d_plan: S2DPlan, rate: float = 1.0):
         plan_count = 0
         while self.running and s2d_plan.is_active():
             plan_count += 1
@@ -141,7 +141,7 @@ class LLMController():
         print_t(f"[S2S ({s2d_plan.id})] Task completed or stopped.")
         frontend_message.end_queue(s2d_plan.id)
 
-    def s2d_loop(self, rate: float = 0.1):
+    def s2d_loop(self, rate: float = 0.5):
         delay = 1 / rate
         print_t(f"[S2D] Starting S2D...")
 

@@ -18,8 +18,8 @@ Starts with the chain-of-thought reasoning then a JSON object. The json object s
 - `action`: Updates the global plan list. Multiple action calls should be separated by `;`. Possible actions:
   - `update(<task_id>)`: Each user task will start with a default plan that only has one `FREE` state, you can update the task with the given ID with a new plan. Or you can take the in-progress plan as reference and update it.
   - `continue(<task_id>)`: Continue the task with the given ID. You can continue an in-progress/stopped task and in this case, you can finish generation without the rest fields. When you don't have a task to continue, you can just continue the default task with `0`.
-  - `stop(<task_id>)`: Stop the task with the given ID. The task will be marked as `stopped`. Use this when some existing task can be merged into another task or is no longer needed.
-  - `new(<task_content>)`: Start a new task according to your own decision with the given content. In this case, you should provide the full plan details.
+  - `stop(<task_id>)`: Stop the task with the given ID. The task will be marked as `stopped`. Use this when some existing task can be merged into another task or is no longer needed. **IMPORTANT**: Before stopping or creating a new task, check if an in-progress task already fulfills the same objective. If so, continue that task instead of creating a duplicate.
+  - `new(<task_content>)`: Start a new task according to your own decision with the given content. In this case, you should provide the full plan details. **Before createing a new task**: Check if the current in-progress or recent task already satisfies the condition you're trying to handle. Avoid stopping and recreating identical tasks.
 - initial_state: If you are overriding an existing task, choose an appropriate initial state of the FSM according to the task requirement. If starting a new task, choose the initial state based on the task requirement. If continuing an existing task, omit this field.
 - variables:
   - A dictionary storing task-specific variables.
