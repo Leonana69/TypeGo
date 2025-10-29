@@ -65,12 +65,11 @@ class PlanGenerator():
             f.write(remove_leading_prompt + "\n---\n")
         return ret
 
-    def s2d_plan(self, inst: Optional[str], model_type: ModelType = ModelType.GPT4O) -> str:
+    def s2d_plan(self, model_type: ModelType = ModelType.GPT4O) -> str:
         prompt = self.s2d_base_prompt.format(
             robot_skills="\n".join(self.robot.registry.get_skill_list()),
             example_plans=self.s2d_examples,
             task_history=S2DPlan.get_s2d_input(),
-            user_instruction=inst,
             user_guidelines=self.s2d_user_guidelines,
             observation=self.robot.obs.obs_str()
         )
@@ -82,7 +81,7 @@ class PlanGenerator():
             return ""
         
         with open(CHAT_LOG_DIR + "s2d_log.txt", "a") as f:
-            remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
+            remove_leading_prompt = prompt# .split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret

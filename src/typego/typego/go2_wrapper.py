@@ -307,9 +307,9 @@ class Go2Observation(RobotObservation):
             "t": time.strftime("%H:%M:%S", time.localtime(time.time())),
             "robot": {
                 "pose_world": {
-                    "x": self.position[0],
-                    "y": self.position[1],
-                    "yaw": self.orientation[2]
+                    "x": round(self.position[0], 2),
+                    "y": round(self.position[1], 2),
+                    "yaw": round(self.orientation[2], 2)
                 },
                 "posture": self.posture
             },

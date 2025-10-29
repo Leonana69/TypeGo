@@ -63,7 +63,7 @@ class LLMController():
         self.robot.start()
 
         # self.s0_loop_thread.start()
-        # self.s2d_loop_thread.start()
+        self.s2d_loop_thread.start()
         # self.vc_thread.start()
 
         # time.sleep(1.0)
@@ -103,15 +103,15 @@ class LLMController():
     S1: Fast thinking, react to new observations, adjust short-term plans
     """
     def on_new_task(self, s2d_plan: S2DPlan):
-        print_t(json.dumps(self.robot.obs.scene_graph.all_objects(), cls=ObservationEncoder, indent=4))
-
-
         frontend_message.publish(f"Received new task: {s2d_plan.content}", task_id=s2d_plan.id)
         inst = s2d_plan.content
         # S1 plan starts
         s1_plan = S1(self.planner).plan(inst)
         print_t(f"[S1] Plan: {s1_plan}")
         s2d_plan.add_action(s1_plan)
+
+        # Notify S2D loop
+        self.s2d_event.set()
 
         print(self.robot.registry.execute(s1_plan, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r)))
 
@@ -122,7 +122,7 @@ class LLMController():
             count += 1
             print_t(f"[C] S2S loop for task {inst} ({s2d_plan.id}), current state: {s2d_plan.current_state}")
             start_time = time.time()
-            plan = self.planner.s2s_plan(inst, s2d_plan, model_type=ModelType.GPT4O)
+            plan = self.planner.s2s_plan(inst, s2d_plan, model_type=ModelType.GROQ)
 
             print_t(f"[S2S] Plan: {plan}")
             next_action = s2d_plan.process_s2s_response(plan)
@@ -136,19 +136,18 @@ class LLMController():
         print_t(f"[C] Task {inst} ({s2d_plan.id}) completed or stopped.")
         frontend_message.end_queue(s2d_plan.id)
 
-    def s2d_loop(self, rate: float = 0.2):
+    def s2d_loop(self, rate: float = 0.1):
         delay = 1 / rate
         print_t(f"[C] Starting S2D...")
 
         while self.running:
-            self.s2d_event.wait()
+            self.s2d_event.wait(timeout=delay)
             self.s2d_event.clear()
 
-            new_inst = self.get_instruction(2)
-            t1 = time.time()
-            plan = self.planner.s2d_plan(new_inst, model_type=ModelType.GROQ)
-            print_t(f"[S2D] Plan: {plan}, took {time.time() - t1:.2f}s")
+            # print_t(f"[C] S2D loop triggered. {S2DPlan.get_s2d_input()}")
 
-            # process plan ...
-            S2DPlan.parse(new_inst, plan)
-            print(S2DPlan.CURRENT)
+            plan = self.planner.s2d_plan(model_type=ModelType.GROQ)
+            S2DPlan.process_s2d_response(plan)
+
+            print_t(f"[C] S2D loop completed. {S2DPlan.get_s2d_input()}")
+            return

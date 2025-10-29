@@ -4,6 +4,8 @@ import json, time
 import re
 from json import JSONEncoder
 
+from typego.utils import print_t
+
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
 STATUS_IN_PROGRESS = "in_progress"
@@ -144,8 +146,13 @@ class S2DPlan:
     def parse(self, plan_json: dict):
         self.variables = plan_json.get("variables", {})
         self.global_trans = plan_json.get("global_trans", [])
-        self.current_state = plan_json.get("initial_state", "FREE")
+        self.current_state = plan_json.get("initial_state", "DEFAULT")
         self.states = {name: S2DPlanState(name, content) for name, content in plan_json.get("states", {}).items()}
+
+        # Move action history in DEFAULT state to the new current state
+        if self.s2s_history and self.s2s_history[0].state == "DEFAULT":
+            for action in self.s2s_history:
+                action.state = self.current_state
 
     def is_active(self):
         return self.status == STATUS_IN_PROGRESS or self.status == STATUS_PAUSED
@@ -167,7 +174,10 @@ class S2DPlan:
             task_id = int(inner) if inner else None
             return command, task_id
         try:
-            json_content = llm_response.split("```json", 1)[1].rsplit("```", 1)[0]
+            if "```json" in llm_response:
+                json_content = llm_response.split("```json", 1)[1].rsplit("```", 1)[0]
+            else:
+                json_content = llm_response
             plan_json = json.loads(json_content)
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {e}")

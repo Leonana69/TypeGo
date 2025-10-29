@@ -136,6 +136,7 @@ To implement this behavior, we define:
 }
 ```
 
+------------
 # EXAMPLE 2
 ## TASK HISTORY
 Task list: [
@@ -270,6 +271,7 @@ There are two in-progress tasks (2 and 3). Task 2 has a concrete plan to find an
 }
 ```
 
+------------
 # EXAMPLE 3
 ## TASK HISTORY
 Task list: [
@@ -360,6 +362,7 @@ There is only one in-progress task (3) and it's still ongoing. The robot should 
 }
 ```
 
+------------
 # EXAMPLE 4
 ## TASK HISTORY
 Task list: [
