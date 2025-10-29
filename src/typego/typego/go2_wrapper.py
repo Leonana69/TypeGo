@@ -631,12 +631,12 @@ class Go2(RobotWrapper):
             info = self.obs.get_obj_info(object, True)
             if info is None:
                 return False
-            if (info.x - 0.5) < 0.1:
+            if (info.cx - 0.5) < 0.1:
                 return True
 
             self._rotate((0.5 - info.x) * 80, None, stop_event)
 
-    @robot_skill("look_object", description="Look at a specific object", subsystem=SubSystem.MOVEMENT)
+    @robot_skill("look_object", description="Look at a specific object for some time", subsystem=SubSystem.MOVEMENT)
     @go2action
     def look_object(self, object: str, pause_event: threading.Event, stop_event: threading.Event) -> bool:
         body_pitch = self.obs.orientation[1]
@@ -830,7 +830,7 @@ class Go2(RobotWrapper):
             if pause_event.is_set():
                 pause_event.wait()
 
-            if time.time() - start_time > 60.0:
+            if time.time() - start_time > 20.0:
                 return False
             
             cycle_start_time = time.time()

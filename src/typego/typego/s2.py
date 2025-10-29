@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json, time
 import re
+from typing import Optional
 from json import JSONEncoder
 
 from typego.utils import print_t
@@ -119,6 +120,12 @@ class S2DPlan:
         self.s2s_history: list[ActionItem] = []  # track actions in this plan
 
         S2DPlan.PLAN_LIST[self.id] = self
+
+        # pause the DEFAULT plan if this is not it
+        if self.id != 0:
+            default_plan = S2DPlan.PLAN_LIST.get(0)
+            if default_plan and default_plan.status == STATUS_IN_PROGRESS:
+                default_plan.status = STATUS_PAUSED
     
     @classmethod
     def init_default(cls):
@@ -143,6 +150,19 @@ class S2DPlan:
         default_plan.status = STATUS_IN_PROGRESS
         cls.PLAN_LIST[default_plan.id] = default_plan
 
+    @classmethod
+    def init_test_plan(cls):
+        """Initialize a test plan for unit testing."""
+        test_plan = cls("Test plan that makes the robot continuously do the same action.")
+        test_plan.variables = {}
+        test_plan.global_trans = []
+        test_plan.current_state = "DO_ACTION"
+        test_plan.states = {
+            "DO_ACTION": S2DPlanState("DO_ACTION", "nod head once -> DO_ACTION"),
+        }
+        cls.PLAN_LIST[test_plan.id] = test_plan
+        return test_plan
+
     def parse(self, plan_json: dict):
         self.variables = plan_json.get("variables", {})
         self.global_trans = plan_json.get("global_trans", [])
@@ -158,21 +178,39 @@ class S2DPlan:
         return self.status == STATUS_IN_PROGRESS or self.status == STATUS_PAUSED
 
     @classmethod
-    def process_s2d_response(cls, llm_response: str):
-        def parse_task(task: str) -> tuple[str, int | None]:
+    def process_s2d_response(cls, llm_response: str) -> Optional["S2DPlan"]:
+        def parse_task(task: str) -> list[tuple[str, Optional[int | str]]]:
             """
-            Parse a task string like 'stop(5)', 'update(3)', or 'continue(10)'.
-            Returns (command: str, task_id: int).
-            Raises ValueError if format is invalid.
+            Parse a task string like:
+                'stop(5);update(2);new(task_content)'
+            Returns a list of (command: str, argument: int | str | None) tuples.
+            Raises ValueError if any command has invalid format.
             """
-            m = re.fullmatch(r"([a-zA-Z_]+)\((\d*)\)", task.strip())
-            if not m:
-                raise ValueError(f"Malformed action: {task} (expected format 'command(number)')")
+            results = []
+            for segment in task.split(";"):
+                segment = segment.strip()
+                if not segment:
+                    continue
 
-            command = m.group(1)
-            inner = m.group(2)
-            task_id = int(inner) if inner else None
-            return command, task_id
+                # Match command(arg)
+                m = re.fullmatch(r"([a-zA-Z_]+)\((.*?)\)", segment)
+                if not m:
+                    raise ValueError(f"Malformed action: {segment} (expected format 'command(arg)')")
+
+                command, inner = m.groups()
+                inner = inner.strip()
+
+                # Try to parse as int if numeric
+                if inner == "":
+                    arg: Optional[int | str] = None
+                elif inner.isdigit():
+                    arg = int(inner)
+                else:
+                    arg = inner.strip("'")  # treat as string
+
+                results.append((command, arg))
+
+            return results
         try:
             if "```json" in llm_response:
                 json_content = llm_response.split("```json", 1)[1].rsplit("```", 1)[0]
@@ -182,24 +220,28 @@ class S2DPlan:
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {e}")
 
-        commands, task_id = parse_task(plan_json.get("action", "").strip())  # validate format
-        commands = [cmd.strip() for cmd in commands.split(";") if cmd.strip()]
+        commands = parse_task(plan_json.get("action", "").strip())  # validate format
 
-        if task_id is None:
-            raise ValueError("Task ID must be provided for continue commands.")
-
-        for command in commands:
-            if command == "update":
-                plan = cls.PLAN_LIST.get(task_id)
+        for command, task_arg in commands:
+            if command == "new":
+                if not isinstance(task_arg, str):
+                    raise ValueError(f"Invalid task content for 'new': {task_arg}")
+                plan = cls(task_arg)
+                plan.parse(plan_json)
+                return plan
+            elif command == "update":
+                plan = cls.PLAN_LIST.get(task_arg)
                 if plan:
                     plan.parse(plan_json)
+                else:
+                    raise ValueError(f"Plan with ID {task_arg} not found for update.")
             elif command == "stop":
-                plan = cls.PLAN_LIST.get(task_id)
+                plan = cls.PLAN_LIST.get(task_arg)
                 if plan and plan.status == STATUS_IN_PROGRESS:
                     plan.status = STATUS_STOPPED
                     plan.end_time = time.time()
             elif command == "continue":
-                plan = cls.PLAN_LIST.get(task_id)
+                plan = cls.PLAN_LIST.get(task_arg)
                 if plan and plan.status != STATUS_IN_PROGRESS:
                     plan.status = STATUS_IN_PROGRESS
                     plan.end_time = None
@@ -207,6 +249,7 @@ class S2DPlan:
                     # TODO: spawn s2s thread if not running
             else:
                 raise ValueError(f"Unknown command: {command}")
+        return None
 
     @classmethod
     def get_history_sorted_by_time(cls, after_time: float = None):
@@ -250,7 +293,8 @@ class S2DPlan:
     def add_action(self, action: str):
         """Add an action to the current state."""
         if self.status != STATUS_IN_PROGRESS:
-            raise ValueError("Cannot add action to a non-in-progress plan.")
+            # Cannot add action to a non-active plan
+            return
 
         action_item = ActionItem(start=time.time(), end=None, state=self.current_state, content=action, status=STATUS_IN_PROGRESS)
         self.s2s_history.append(action_item)

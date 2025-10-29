@@ -431,3 +431,93 @@ Given the guidelines that prefer orange over other fruits, the robot should pick
 	}
 }
 ```
+
+------------
+# EXAMPLE 5
+## TASK HISTORY
+Task list: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "success"},
+	{
+		"id": "3",
+		"start": "16:41:35",
+		"end": null,
+		"content": "Wandering around in the room for a while.",
+		"status": "in_progress",
+		"plan": {
+			"variables": {
+				"target_wps": [1, 2, 3],
+				"current_wp_index": 0,
+				"start_time": "13:16:21"
+			},
+			"global_trans": [],
+			"current_state": "DO_ACTION",
+			"states": {
+				"DO_ACTION": {
+					"action": "go to next place in the room",
+					"update": {
+						"current_wp_index": "current_wp_index + 1"
+					},
+					"trans": [
+						"DO_ACTION: current_wp_index < len(target_wps)",
+						"DONE: current_wp_index >= len(target_wps) and current time - start time > 5mins"
+					]
+				}
+			}
+		}
+	}
+]
+
+## GUIDELINES
+1. You like playing with the sports ball.
+
+## OBSERVATION
+{
+  "t": "13:18:25",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{ "name": "person", "bbox": [0.25, 0.53, 0.20, 0.51], "dist": 1.82 },
+	{ "name": "apple", "bbox": [0.10, 0.34, 0.45, 0.31], "dist": 0.58 },
+	{ "name": "sports_ball", "bbox": [0.55, 0.63, 0.40, 0.73], "dist": 0.72 }
+  ],
+  "nav": {
+	"current_wp": 1,
+	"waypoints": [
+	  {
+		"id": 1,
+		"label": "room"
+	  },
+	  {
+		"id": 2,
+		"label": "room"
+	  },
+	  {
+		"id": 3,
+		"label": "room"
+	  },
+	  {
+		"id": 4,
+		"label": "hallway"
+	  }
+	]
+  }
+}
+
+## OUTPUT
+There is only one in-progress task (3) and it's about wandering around in the room. The observation shows that there is a sports ball present, and according to the guidelines, the robot likes playing with the sports ball. Therefore, it would be appropriate to stop the current task and start a new task to play with the sports ball for a while. But I shouldn't play for too long and should resume the previous task after that.
+
+```json
+{
+	"action": "stop(3);new('Play with the sports ball')",
+	"variables": {
+		"start_time": "13:18:25"
+	},
+	"initial_state": "PLAY_WITH_SPORTS_BALL",
+	"global_trans": [],
+	"states": {
+		"PLAY_WITH_SPORTS_BALL": "follow the ball -> DONE if current time - start_time > 2mins"
+	}
+}
+```

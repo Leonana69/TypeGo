@@ -72,6 +72,10 @@ class LLMController():
         # self.robot.registry.execute("look_object('person')", task_id=123)
         # print(self.robot.registry.execute("move_forward(0.6)", task_id=124))
 
+        time.sleep(1.0)
+        test_plan = S2DPlan.init_test_plan()
+        threading.Thread(target=self.on_new_task, args=(test_plan,), daemon=True).start()
+
     def stop_controller(self):
         self.running = False
         self.robot.stop()
@@ -99,55 +103,57 @@ class LLMController():
         image = obs.slam_map.get_map()
         return Image.fromarray(image)
 
-    """
-    S1: Fast thinking, react to new observations, adjust short-term plans
-    """
     def on_new_task(self, s2d_plan: S2DPlan):
         frontend_message.publish(f"Received new task: {s2d_plan.content}", task_id=s2d_plan.id)
         inst = s2d_plan.content
         # S1 plan starts
         s1_plan = S1(self.planner).plan(inst)
-        print_t(f"[S1] Plan: {s1_plan}")
+        print_t(f"[S2S ({s2d_plan.id})] S1 plan: {s1_plan}")
         s2d_plan.add_action(s1_plan)
 
         # Notify S2D loop
         self.s2d_event.set()
 
-        print(self.robot.registry.execute(s1_plan, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r)))
+        s1_exec_ret = self.robot.registry.execute(s1_plan, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r))
+        print_t(f'[S2S ({s2d_plan.id})] S1 execution ret: {s1_exec_ret}')
 
         # Enter S2S loop
-        loop_freq = 0.5
-        count = 0
-        while self.running and s2d_plan.is_active() and count < 20:
-            count += 1
-            print_t(f"[C] S2S loop for task {inst} ({s2d_plan.id}), current state: {s2d_plan.current_state}")
+        self.s2s_loop(s2d_plan)
+
+    def s2s_loop(self, s2d_plan: S2DPlan, rate: float = 0.5):
+        plan_count = 0
+        while self.running and s2d_plan.is_active():
+            plan_count += 1
+            print_t(f"[S2S ({s2d_plan.id})] Loop for task {s2d_plan.content}, current state: {s2d_plan.current_state}")
             start_time = time.time()
-            plan = self.planner.s2s_plan(inst, s2d_plan, model_type=ModelType.GROQ)
+            plan = self.planner.s2s_plan(s2d_plan.content, s2d_plan, model_type=ModelType.GROQ)
 
-            print_t(f"[S2S] Plan: {plan}")
+            print_t(f"[S2S ({s2d_plan.id})] Plan: {plan}")
             next_action = s2d_plan.process_s2s_response(plan)
-            print_t(f"[S2S] Action: {next_action}")
+            print_t(f"[S2S ({s2d_plan.id})] Action: {next_action}")
             if next_action:
-                print(self.robot.registry.execute(next_action, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r)))
+                exec_ret = self.robot.registry.execute(next_action, task_id=s2d_plan.id, callback=lambda r: s2d_plan.finish_action(r))
+                print_t(f'[S2S ({s2d_plan.id})] Execution ret: {exec_ret}')
 
-            sleep_time = max(0, 1.0 / loop_freq - (time.time() - start_time))
+            sleep_time = max(0, 1.0 / rate - (time.time() - start_time))
             time.sleep(sleep_time)
 
-        print_t(f"[C] Task {inst} ({s2d_plan.id}) completed or stopped.")
+        print_t(f"[S2S ({s2d_plan.id})] Task completed or stopped.")
         frontend_message.end_queue(s2d_plan.id)
 
     def s2d_loop(self, rate: float = 0.1):
         delay = 1 / rate
-        print_t(f"[C] Starting S2D...")
+        print_t(f"[S2D] Starting S2D...")
 
         while self.running:
             self.s2d_event.wait(timeout=delay)
             self.s2d_event.clear()
 
-            # print_t(f"[C] S2D loop triggered. {S2DPlan.get_s2d_input()}")
+            print_t(f"[S2D] Loop triggered. {S2DPlan.get_s2d_input()}")
 
             plan = self.planner.s2d_plan(model_type=ModelType.GROQ)
-            S2DPlan.process_s2d_response(plan)
 
-            print_t(f"[C] S2D loop completed. {S2DPlan.get_s2d_input()}")
-            return
+            optional_new_plan = S2DPlan.process_s2d_response(plan)
+            if optional_new_plan is not None:
+                print_t(f"[S2D] New S2D plan detected: {optional_new_plan.content}")
+                threading.Thread(target=self.s2s_loop, args=(optional_new_plan,), daemon=True).start()

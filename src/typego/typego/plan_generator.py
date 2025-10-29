@@ -81,7 +81,7 @@ class PlanGenerator():
             return ""
         
         with open(CHAT_LOG_DIR + "s2d_log.txt", "a") as f:
-            remove_leading_prompt = prompt# .split("# CURRENT CONTEXT", 1)[-1]
+            remove_leading_prompt = prompt.split("# CURRENT CONTEXT", 1)[-1]
             remove_leading_prompt += ret
             f.write(remove_leading_prompt + "\n---\n")
         return ret
