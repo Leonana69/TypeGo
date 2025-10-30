@@ -510,14 +510,79 @@ There is only one in-progress task (3) and it's about wandering around in the ro
 
 ```json
 {
-	"action": "stop(3);new('Play with the sports ball')",
+	"action": "pause(3);new('Play with the sports ball')",
 	"variables": {
 		"start_time": "13:18:25"
 	},
 	"initial_state": "PLAY_WITH_SPORTS_BALL",
 	"global_trans": [],
 	"states": {
-		"PLAY_WITH_SPORTS_BALL": "follow the ball -> DONE if current time - start_time > 2mins"
+		"PLAY_WITH_SPORTS_BALL": "follow the ball -> DONE if current time - start_time > 20s"
 	}
+}
+```
+
+------------
+# EXAMPLE 6
+## TASK HISTORY
+Task list: [
+	{"id": "1", "start": "12:07:38", "end": "12:09:43", "content": "Play with the person", "status": "success"},
+	{"id": "2", "start": "12:09:15", "end": "12:12:12", "content": "Go to the other side of the room and find a chair and take a picture of it.", "status": "paused"},
+	{
+		"id": "3",
+		"start": "12:11:54",
+		"end": null,
+		"content": "Interact with person",
+		"status": "in_progress",
+		"plan": {
+			"variables": {
+				"start_time": "12:11:54"
+			},
+			"global_trans": [],
+			"current_state": "FOLLOW_PERSON",
+			"states": {
+				"FOLLOW_PERSON": "follow person -> INTERACT",
+				"INTERACT": "wagging; speak 'Hello!' -> DONE"
+			}
+		}
+	}
+]
+
+## GUIDELINES
+1. You can look at the most interesting object in the view if you don't have any other task or just lying down on the ground.
+2. Don't go too far away from the current waypoint unless you are asked to do so.
+3. If you see a person AND you are not already interacting with them, you should stop the current task immediately, start a new task that follows and do some action to interact with the person. After that, continue the previous task.
+
+## OBSERVATION
+{
+  "t": "13:18:25",
+  "robot": {
+	"posture": "standing"
+  },
+  "perception": [
+	{ "name": "person", "bbox": [0.25, 0.53, 0.20, 0.51], "dist": 1.82 },
+	{ "name": "apple", "bbox": [0.10, 0.34, 0.45, 0.31], "dist": 0.58 },
+  ],
+  "nav": {
+	"current_wp": 1,
+	"waypoints": [
+	  {
+		"id": 1,
+		"label": "room"
+	  },
+	  {
+		"id": 2,
+		"label": "hallway"
+	  }
+	]
+  }
+}
+
+## OUTPUT
+You are already interacting with a person in task 3, so there is no need to start a new task. Just continue the current task.
+
+```json
+{
+	"action": "continue(3)"
 }
 ```

@@ -807,7 +807,8 @@ class Go2(RobotWrapper):
     @robot_skill("search", description="Rotate to find a specific object when it's not in current view.")
     @go2action
     def search(self, object: str, pause_event: threading.Event, stop_event: threading.Event) -> bool:
-        rand_turn = random.choice([self.turn_left, self.turn_right])
+        # rand_turn = random.choice([self.turn_left, self.turn_right])
+        rand_turn = self.turn_right
         for _ in range(10):
             if stop_event.is_set():
                 return False

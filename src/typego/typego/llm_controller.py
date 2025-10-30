@@ -124,6 +124,10 @@ class LLMController():
         plan_count = 0
         while self.running and s2d_plan.is_active():
             plan_count += 1
+            while not s2d_plan.is_running() and self.running:
+                print_t(f"[S2S ({s2d_plan.id})] Task paused. Waiting to resume...")
+                time.sleep(1.0)
+
             print_t(f"[S2S ({s2d_plan.id})] Loop for task {s2d_plan.content}, current state: {s2d_plan.current_state}")
             start_time = time.time()
             plan = self.planner.s2s_plan(s2d_plan.content, s2d_plan, model_type=ModelType.GROQ)
@@ -145,15 +149,19 @@ class LLMController():
         delay = 1 / rate
         print_t(f"[S2D] Starting S2D...")
 
+        planning_time = 0
         while self.running:
-            self.s2d_event.wait(timeout=delay)
+            self.s2d_event.wait(timeout=max(0, delay - planning_time))
             self.s2d_event.clear()
 
             print_t(f"[S2D] Loop triggered. {S2DPlan.get_s2d_input()}")
 
+            start_time = time.time()
             plan = self.planner.s2d_plan(model_type=ModelType.GROQ)
 
             optional_new_plan = S2DPlan.process_s2d_response(plan)
             if optional_new_plan is not None:
                 print_t(f"[S2D] New S2D plan detected: {optional_new_plan.content}")
                 threading.Thread(target=self.s2s_loop, args=(optional_new_plan,), daemon=True).start()
+
+            planning_time += time.time() - start_time

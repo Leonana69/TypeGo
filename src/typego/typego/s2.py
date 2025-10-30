@@ -148,6 +148,7 @@ class S2DPlan:
         default_plan.end_time = None
         default_plan.content = DEFAULT_PLAN_CONTENT
         default_plan.status = STATUS_IN_PROGRESS
+        default_plan.s2s_history = []
         cls.PLAN_LIST[default_plan.id] = default_plan
 
     @classmethod
@@ -158,7 +159,7 @@ class S2DPlan:
         test_plan.global_trans = []
         test_plan.current_state = "DO_ACTION"
         test_plan.states = {
-            "DO_ACTION": S2DPlanState("DO_ACTION", "nod head once -> DO_ACTION"),
+            "DO_ACTION": S2DPlanState("DO_ACTION", "Find the sports ball -> DO_ACTION"),
         }
         cls.PLAN_LIST[test_plan.id] = test_plan
         return test_plan
@@ -176,6 +177,9 @@ class S2DPlan:
 
     def is_active(self):
         return self.status == STATUS_IN_PROGRESS or self.status == STATUS_PAUSED
+    
+    def is_running(self):
+        return self.status == STATUS_IN_PROGRESS
 
     @classmethod
     def process_s2d_response(cls, llm_response: str) -> Optional["S2DPlan"]:
@@ -240,9 +244,14 @@ class S2DPlan:
                 if plan and plan.status == STATUS_IN_PROGRESS:
                     plan.status = STATUS_STOPPED
                     plan.end_time = time.time()
+            elif command == "pause":
+                plan = cls.PLAN_LIST.get(task_arg)
+                if plan and plan.status == STATUS_IN_PROGRESS:
+                    plan.status = STATUS_PAUSED
+                    plan.end_time = time.time()
             elif command == "continue":
                 plan = cls.PLAN_LIST.get(task_arg)
-                if plan and plan.status != STATUS_IN_PROGRESS:
+                if plan and plan.status == STATUS_PAUSED:
                     plan.status = STATUS_IN_PROGRESS
                     plan.end_time = None
 
@@ -272,8 +281,18 @@ class S2DPlan:
         self.current_state = new_state
 
         if new_state == "DONE":
+            print_t(f"[S2DPlan ({self.id})] Plan completed, transitioned to DONE.")
             self.status = STATUS_SUCCESS
             self.end_time = time.time()
+
+            # Auto resume a paused task if any, check task list in reverse time order
+            for plan in reversed(S2DPlan.get_history_sorted_by_time()):
+                if plan.status == STATUS_PAUSED:
+                    plan.status = STATUS_IN_PROGRESS
+                    plan.end_time = None
+                    print_t(f"[S2DPlan ({self.id})] Resuming paused plan ({plan.id}): {plan.content}")
+                    break
+            
 
     def process_s2s_response(self, response: str) -> str | None:
         if response.startswith('```json'):
