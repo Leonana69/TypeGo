@@ -9,6 +9,7 @@ import itertools
 
 from typego.utils import log_error, print_t
 
+
 # ----------------------------
 # Robot Subsystems
 # ----------------------------
@@ -21,7 +22,8 @@ class SubSystem(Enum):
 # Runtime control context
 # =========================
 class SkillControl:
-    def __init__(self):
+    def __init__(self, task_id: int):
+        self.task_id = task_id
         self.stop_event = threading.Event()
         # Pause policy: pause_event SET => paused, CLEAR => running
         self.pause_event = threading.Event()
@@ -86,6 +88,7 @@ class SkillRegistry:
         self._exec_counter = itertools.count(1)
         self._executions: dict[str, SkillExecution] = {}  # id → execution
         self._task_to_exec: dict[int, str] = {}  # task_id → exec_id
+        self._task_controls: dict[int, SkillControl] = {}  # task_id → control
 
     def register(self, name: str, description: str = "",
                  params: dict | None = None,
@@ -115,67 +118,164 @@ class SkillRegistry:
         return [str(item) for item in self._items.values()]
 
     # -------------------------
-    # Control APIs
+    # Control APIs - Now Task-Specific
     # -------------------------
-    def pause(self, subsystem: Optional[SubSystem] = None) -> bool:
+    def pause(self, task_id: Optional[int] = None, subsystem: Optional[SubSystem] = None) -> bool:
+        """
+        Pause a specific task by task_id, or all tasks in a subsystem.
+        If neither specified, pauses all active tasks.
+        """
+        print_t(f"[SkillRegistry] Pausing task_id={task_id}, subsystem={subsystem}")
         with self._active_guard:
-            targets = [subsystem] if subsystem else list(self._active.keys())
-            ok = False
-            for ss in targets:
-                exe = self._active.get(ss)
+            if task_id is not None:
+                # Pause specific task
+                control = self._task_controls.get(task_id)
+                if not control:
+                    print_t(f"[SkillRegistry] Task {task_id} not found or already finished")
+                    return False
+                
+                exec_id = self._task_to_exec.get(task_id)
+                exe = self._executions.get(exec_id) if exec_id else None
                 if not exe:
-                    continue
+                    return False
+                
                 fn = self._funcs.get(exe.name)
                 if getattr(fn, "__accepts_pause__", False):
-                    exe.control.pause_event.set()
-                    print_t(f"[SkillRegistry] Paused skill '{exe.name}' in subsystem {ss.name}")
-
-                    # mark subsystem free
+                    control.pause_event.set()
+                    print_t(f"[SkillRegistry] Paused task {task_id} (skill '{exe.name}')")
+                    
+                    # Mark subsystem free and move to paused
+                    ss = exe.subsystem
                     self._paused[ss] = exe
                     self._active[ss] = None
                     self._running[ss] = None
-
-                    # free semaphore so new skill can acquire
                     self._locks[ss].release()
+                    return True
                 else:
-                    exe.control.stop_event.set()
-                    print_t(f"[SkillRegistry] Skill '{exe.name}' does not support pause, stopping instead")
-                ok = True
-            return ok
+                    print_t(f"[SkillRegistry] Task {task_id} (skill '{exe.name}') does not support pause, stopping instead")
+                    control.stop_event.set()
+                    return True
+            else:
+                # Pause all tasks in subsystem(s)
+                targets = [subsystem] if subsystem else list(self._active.keys())
+                ok = False
+                for ss in targets:
+                    exe = self._active.get(ss)
+                    if not exe:
+                        continue
+                    
+                    control = self._task_controls.get(exe.task_id)
+                    if not control:
+                        continue
+                    
+                    fn = self._funcs.get(exe.name)
+                    if getattr(fn, "__accepts_pause__", False):
+                        control.pause_event.set()
+                        print_t(f"[SkillRegistry] Paused task {exe.task_id} (skill '{exe.name}') in subsystem {ss.name}")
+                        
+                        self._paused[ss] = exe
+                        self._active[ss] = None
+                        self._running[ss] = None
+                        self._locks[ss].release()
+                    else:
+                        control.stop_event.set()
+                        print_t(f"[SkillRegistry] Task {exe.task_id} does not support pause, stopping instead")
+                    ok = True
+                return ok
 
-    def resume(self, subsystem: Optional[SubSystem] = None) -> bool:
+    def resume(self, task_id: Optional[int] = None, subsystem: Optional[SubSystem] = None) -> bool:
+        """
+        Resume a specific task by task_id, or all paused tasks in a subsystem.
+        If neither specified, resumes all paused tasks.
+        """
+        print_t(f"[SkillRegistry] Resuming task_id={task_id}, subsystem={subsystem}")
         with self._active_guard:
-            targets = [subsystem] if subsystem else list(self._paused.keys())
-            ok = False
-            for ss in targets:
-                exe = self._paused.get(ss)
+            if task_id is not None:
+                # Resume specific task
+                control = self._task_controls.get(task_id)
+                if not control:
+                    print_t(f"[SkillRegistry] Task {task_id} not found")
+                    return False
+                
+                exec_id = self._task_to_exec.get(task_id)
+                exe = self._executions.get(exec_id) if exec_id else None
                 if not exe:
-                    continue
-                exe.control.pause_event.clear()
+                    return False
+                
+                ss = exe.subsystem
+                if self._paused.get(ss) != exe:
+                    print_t(f"[SkillRegistry] Task {task_id} is not currently paused")
+                    return False
+                
+                control.pause_event.clear()
                 self._active[ss] = exe
                 self._running[ss] = exe.name
                 self._paused[ss] = None
-
-                # re-acquire semaphore for resumed skill
                 self._locks[ss].acquire()
-                print_t(f"[SkillRegistry] Resumed skill '{exe.name}' in subsystem {ss.name}")
-                ok = True
-            return ok
+                print_t(f"[SkillRegistry] Resumed task {task_id} (skill '{exe.name}')")
+                return True
+            else:
+                # Resume all paused tasks in subsystem(s)
+                targets = [subsystem] if subsystem else list(self._paused.keys())
+                ok = False
+                for ss in targets:
+                    exe = self._paused.get(ss)
+                    if not exe:
+                        continue
+                    
+                    control = self._task_controls.get(exe.task_id)
+                    if not control:
+                        continue
+                    
+                    control.pause_event.clear()
+                    self._active[ss] = exe
+                    self._running[ss] = exe.name
+                    self._paused[ss] = None
+                    self._locks[ss].acquire()
+                    print_t(f"[SkillRegistry] Resumed task {exe.task_id} (skill '{exe.name}') in subsystem {ss.name}")
+                    ok = True
+                return ok
 
-    def stop(self, subsystem: Optional[SubSystem] = None, timeout: float | None = None) -> bool:
-        targets = [subsystem] if subsystem else list(self._active.keys())
-        ok = False
-        for ss in targets:
-            # get exe without holding the guard while joining
+    def stop(self, task_id: Optional[int] = None, subsystem: Optional[SubSystem] = None, timeout: float | None = None) -> bool:
+        """
+        Stop a specific task by task_id, or all tasks in a subsystem.
+        If neither specified, stops all active tasks.
+        """
+        print_t(f"[SkillRegistry] Stopping task_id={task_id}, subsystem={subsystem}")
+        if task_id is not None:
+            # Stop specific task
             with self._active_guard:
-                exe = self._active.get(ss)
-            if not exe:
-                continue
-            print_t(f"[SkillRegistry] Stopping subsystem {ss.name}")
-            exe.control.stop_event.set()
-            exe.thread.join(timeout=timeout)  # no guard held here
-            ok = True
-        return ok
+                control = self._task_controls.get(task_id)
+                if not control:
+                    print_t(f"[SkillRegistry] Task {task_id} not found or already finished")
+                    return False
+                
+                exec_id = self._task_to_exec.get(task_id)
+                exe = self._executions.get(exec_id) if exec_id else None
+            
+            if exe:
+                print_t(f"[SkillRegistry] Stopping task {task_id} (skill '{exe.name}')")
+                control.stop_event.set()
+                exe.thread.join(timeout=timeout)
+                return True
+            return False
+        else:
+            # Stop all tasks in subsystem(s)
+            targets = [subsystem] if subsystem else list(self._active.keys())
+            ok = False
+            for ss in targets:
+                with self._active_guard:
+                    exe = self._active.get(ss)
+                if not exe:
+                    continue
+                
+                control = self._task_controls.get(exe.task_id)
+                if control:
+                    print_t(f"[SkillRegistry] Stopping task {exe.task_id} in subsystem {ss.name}")
+                    control.stop_event.set()
+                    exe.thread.join(timeout=timeout)
+                    ok = True
+            return ok
 
     def execute(
         self,
@@ -186,7 +286,7 @@ class SkillRegistry:
     ) -> dict[str, Any]:
         """Execute a registered skill asynchronously in a background thread.
         - Ensures exclusive subsystem execution (non-blocking BUSY).
-        - Provides stop/pause control via threading.Event.
+        - Provides stop/pause control via threading.Event per task.
         - Allows nested same-thread calls.
         - Overrides any existing execution with the same task_id.
         """
@@ -217,13 +317,15 @@ class SkillRegistry:
 
         # ---- Check for existing task with same task_id ----
         old_exe = None
+        old_control = None
         with self._active_guard:
             if task_id in self._task_to_exec:
                 old_exec_id = self._task_to_exec[task_id]
                 old_exe = self._executions.get(old_exec_id)
-                if old_exe and old_exe.is_alive():
+                old_control = self._task_controls.get(task_id)
+                if old_exe and old_exe.is_alive() and old_control:
                     print_t(f"[SkillRegistry] Task {task_id} already running as '{old_exe.name}' [{old_exec_id}], stopping it")
-                    old_exe.control.stop_event.set()
+                    old_control.stop_event.set()
         
         # Wait for old task outside the lock to avoid deadlock
         if old_exe and old_exe.is_alive():
@@ -240,7 +342,8 @@ class SkillRegistry:
             print_t(f"[SkillRegistry] Subsystem {subsystem.name} is BUSY (task_id={current_task})")
             return {"ok": False, "error": f"subsystem {subsystem.name} is busy", "busy": True, "current_task_id": current_task}
 
-        control = SkillControl()
+        # Create task-specific control
+        control = SkillControl(task_id)
 
         # Generate unique ID
         exec_id = f"{name}-{next(self._exec_counter)}-{uuid.uuid4().hex[:6]}"
@@ -267,9 +370,11 @@ class SkillRegistry:
             finally:
                 with self._active_guard:
                     self._active[subsystem] = None
-                    # Clean up task mapping
+                    # Clean up task mapping and control
                     if self._task_to_exec.get(task_id) == exec_id:
                         del self._task_to_exec[task_id]
+                    if task_id in self._task_controls:
+                        del self._task_controls[task_id]
                 self._running[subsystem] = None
                 lock.release()
                 _current_control.reset(token)
@@ -282,15 +387,24 @@ class SkillRegistry:
             self._active[subsystem] = exe
             self._executions[exec_id] = exe
             self._task_to_exec[task_id] = exec_id
+            self._task_controls[task_id] = control  # Store task-specific control
         self._running[subsystem] = name
 
         t.start()
         return {"ok": True, "id": exec_id, "task_id": task_id}
     
-    def get_status(self, exec_id: str) -> dict[str, Any]:
+    def get_status(self, exec_id: str = None, task_id: int = None) -> dict[str, Any]:
+        """Get status by execution ID or task ID."""
+        if task_id is not None:
+            exec_id = self._task_to_exec.get(task_id)
+            if not exec_id:
+                return {"ok": False, "error": f"unknown task id {task_id}"}
+        
         exe = self._executions.get(exec_id)
         if not exe:
             return {"ok": False, "error": f"unknown execution id {exec_id}"}
+        
+        control = self._task_controls.get(exe.task_id)
         return {
             "ok": True,
             "id": exe.id,
@@ -298,6 +412,8 @@ class SkillRegistry:
             "subsystem": exe.subsystem.name,
             "task_id": exe.task_id,
             "alive": exe.is_alive(),
+            "paused": control.pause_event.is_set() if control else False,
+            "stopped": control.stop_event.is_set() if control else False,
             "started_at": exe.started_at,
         }
 

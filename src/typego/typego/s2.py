@@ -6,6 +6,7 @@ from typing import Optional
 from json import JSONEncoder
 
 from typego.utils import print_t
+from typego.robot_wrapper import RobotWrapper
 
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
@@ -100,6 +101,7 @@ class S2PlanEncoder(JSONEncoder):
 
 class S2DPlan:
     ID_COUNTER = 0
+    ROBOT: RobotWrapper = None  # type: ignore
     PLAN_LIST: dict[int, "S2DPlan"] = {}
     def __init__(self, content: str):
         self.id = S2DPlan.ID_COUNTER
@@ -159,7 +161,8 @@ class S2DPlan:
         test_plan.global_trans = []
         test_plan.current_state = "DO_ACTION"
         test_plan.states = {
-            "DO_ACTION": S2DPlanState("DO_ACTION", "Find the sports ball -> DO_ACTION"),
+            "DO_ACTION": S2DPlanState("DO_ACTION", "Find and follow the sports ball -> DO_ACTION"),
+            # "DO_ACTION": S2DPlanState("DO_ACTION", "Nod once -> DO_ACTION"),
         }
         cls.PLAN_LIST[test_plan.id] = test_plan
         return test_plan
@@ -242,16 +245,19 @@ class S2DPlan:
             elif command == "stop":
                 plan = cls.PLAN_LIST.get(task_arg)
                 if plan and plan.status == STATUS_IN_PROGRESS:
+                    S2DPlan.ROBOT.registry.stop(plan.id)
                     plan.status = STATUS_STOPPED
                     plan.end_time = time.time()
             elif command == "pause":
                 plan = cls.PLAN_LIST.get(task_arg)
                 if plan and plan.status == STATUS_IN_PROGRESS:
+                    S2DPlan.ROBOT.registry.pause(plan.id)
                     plan.status = STATUS_PAUSED
                     plan.end_time = time.time()
             elif command == "continue":
                 plan = cls.PLAN_LIST.get(task_arg)
                 if plan and plan.status == STATUS_PAUSED:
+                    S2DPlan.ROBOT.registry.resume(plan.id)
                     plan.status = STATUS_IN_PROGRESS
                     plan.end_time = None
 
@@ -283,12 +289,14 @@ class S2DPlan:
         if new_state == "DONE":
             print_t(f"[S2DPlan ({self.id})] Plan completed, transitioned to DONE.")
             self.status = STATUS_SUCCESS
+            S2DPlan.ROBOT.registry.stop(self.id)
             self.end_time = time.time()
 
             # Auto resume a paused task if any, check task list in reverse time order
             for plan in reversed(S2DPlan.get_history_sorted_by_time()):
                 if plan.status == STATUS_PAUSED:
                     plan.status = STATUS_IN_PROGRESS
+                    S2DPlan.ROBOT.registry.resume(plan.id)
                     plan.end_time = None
                     print_t(f"[S2DPlan ({self.id})] Resuming paused plan ({plan.id}): {plan.content}")
                     break

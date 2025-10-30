@@ -32,6 +32,8 @@ class LLMController():
             self.robot = Go2(robot_info)
 
         self.planner = PlanGenerator(self.robot)
+
+        S2DPlan.ROBOT = self.robot
         
         # self.vc_thread = threading.Thread(target=self.check_voice_command_thread)
 
