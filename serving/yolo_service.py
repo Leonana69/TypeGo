@@ -5,7 +5,7 @@ from io import BytesIO
 import json, time
 import grpc
 import torch
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
 
 PROJ_DIR = os.environ.get("PROJ_PATH", os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(PROJ_DIR, "proto"))
@@ -13,7 +13,8 @@ import hyrch_serving_pb2
 import hyrch_serving_pb2_grpc
 
 MODEL_PATH = os.path.join(PROJ_DIR, "models/")
-MODEL_TYPE = "yolov8m.pt"
+MODEL_TYPE = "yolo12x.pt"
+# MODEL_TYPE = "rtdetr-l.pt"
 
 def load_model():
     model = YOLO(MODEL_PATH + MODEL_TYPE)
